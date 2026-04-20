@@ -370,8 +370,26 @@ function fmtDate(d) {
   if (!d) return '';
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
-function shiftMonths(d, n) { var nd = new Date(d.getTime()); nd.setMonth(nd.getMonth()+n); return nd; }
-function shiftYears(d, n)  { var nd = new Date(d.getTime()); nd.setFullYear(nd.getFullYear()+n); return nd; }
+// 安全位移：月底遇到下一月天數較少時，clamp 到目標月最後一天
+// 例：2026-03-31 -1M → 2026-02-28（而非 setMonth 原生行為 2026-03-03）
+function shiftMonths(d, n) {
+  var y = d.getFullYear();
+  var m = d.getMonth() + n;
+  var day = d.getDate();
+  while (m < 0)  { m += 12; y -= 1; }
+  while (m > 11) { m -= 12; y += 1; }
+  var lastDay = new Date(y, m + 1, 0).getDate();
+  if (day > lastDay) day = lastDay;
+  return new Date(y, m, day);
+}
+function shiftYears(d, n)  {
+  var y = d.getFullYear() + n;
+  var m = d.getMonth();
+  var day = d.getDate();
+  var lastDay = new Date(y, m + 1, 0).getDate();
+  if (day > lastDay) day = lastDay; // 處理 2024-02-29 → 2023-02-28
+  return new Date(y, m, day);
+}
 function addDays(d, n)     { var nd = new Date(d.getTime()); nd.setDate(nd.getDate()+n); return nd; }
 
 function escapeHtml(s) {
@@ -598,6 +616,12 @@ function deltaBadge(cur, prev) {
 }
 function countWhere(rows, key, test) { var n=0; rows.forEach(function(r){ if(test(r[key])) n++; }); return n; }
 function isHighSac(v) { var m = String(v||'').match(/\d+/); return !!m && parseInt(m[0],10) >= 3; }
+function makeSacLevelTest(level) {
+  return function (v) {
+    var m = String(v||'').match(/\d+/);
+    return !!m && parseInt(m[0],10) === level;
+  };
+}
 function isSevere(v) { return /警訊|嚴重|重大|死亡|極重度|重度/.test(String(v||'')); }
 function isDeath(v) { return /死亡/.test(String(v||'')); }
 function isNearMiss(v) { return /跡近|near/i.test(String(v||'')); }
@@ -612,6 +636,16 @@ function renderKPIs(cur, lm, ly) {
     { label: '高 SAC (≥3)', v: countWhere(cur,COL.sac,isHighSac), lm: countWhere(lm,COL.sac,isHighSac), ly: countWhere(ly,COL.sac,isHighSac) },
     { label: '重新插管', v: countWhere(cur,COL.reintub,isReintub), lm: countWhere(lm,COL.reintub,isReintub), ly: countWhere(ly,COL.reintub,isReintub) }
   ];
+  // SAC 1 ~ SAC 5 各自分級
+  for (var lv = 1; lv <= 5; lv++) {
+    var test = makeSacLevelTest(lv);
+    cards.push({
+      label: 'SAC ' + lv,
+      v:  countWhere(cur, COL.sac, test),
+      lm: countWhere(lm,  COL.sac, test),
+      ly: countWhere(ly,  COL.sac, test)
+    });
+  }
   $('kpi-grid').innerHTML = cards.map(function (c) {
     return '<div class="card kpi">' +
       '<div class="label">' + c.label + '</div>' +
