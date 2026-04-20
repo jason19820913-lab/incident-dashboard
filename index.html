@@ -205,12 +205,58 @@ var CHARTS = {};       // Chart 實例
 function $(id) { return document.getElementById(id); }
 
 function parseDate(s) {
-  if (!s) return null;
-  // 支援 YYYY-MM-DD / YYYY/MM/DD
-  var str = String(s).replace(/\//g, '-').slice(0, 10);
-  var m = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (!m) return null;
-  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  if (s === null || s === undefined || s === '') return null;
+  // 已經是 Date 物件
+  if (s instanceof Date && !isNaN(s)) {
+    return new Date(s.getFullYear(), s.getMonth(), s.getDate());
+  }
+  var raw = String(s).trim();
+  if (!raw) return null;
+
+  // 1) ISO 格式 "2026-03-15T16:00:00.000Z" → 取前10碼（用 Date 解析避開 UTC 位移）
+  var isoM = raw.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+  if (isoM) {
+    return new Date(parseInt(isoM[1],10), parseInt(isoM[2],10)-1, parseInt(isoM[3],10));
+  }
+
+  // 2) "2026-03-15" / "2026/3/15" / "2026.3.15"
+  var norm = raw.replace(/[\/\.]/g, '-').slice(0, 10);
+  var m = norm.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10));
+
+  // 3) 民國年 "115/3/15" 或 "115-03-15"
+  var rocM = raw.replace(/[\/\.]/g, '-').match(/^(\d{2,3})-(\d{1,2})-(\d{1,2})$/);
+  if (rocM) {
+    var ryear = parseInt(rocM[1],10);
+    if (ryear < 200) ryear += 1911;
+    return new Date(ryear, parseInt(rocM[2],10)-1, parseInt(rocM[3],10));
+  }
+
+  // 4) 中文 "2026年3月15日"
+  var cnM = raw.match(/(\d{2,4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?/);
+  if (cnM) {
+    var cy = parseInt(cnM[1],10);
+    if (cy < 200) cy += 1911;
+    return new Date(cy, parseInt(cnM[2],10)-1, parseInt(cnM[3],10));
+  }
+
+  // 5) Excel 序列號（數字）
+  if (/^\d+(\.\d+)?$/.test(raw)) {
+    var n = parseFloat(raw);
+    if (n > 20000 && n < 80000) {
+      var excelEpoch = new Date(1899, 11, 30);
+      var ms = excelEpoch.getTime() + n * 86400000;
+      var dd2 = new Date(ms);
+      return new Date(dd2.getFullYear(), dd2.getMonth(), dd2.getDate());
+    }
+  }
+
+  // 6) 交給瀏覽器試解析
+  var parsed = new Date(raw);
+  if (!isNaN(parsed)) {
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  }
+  return null;
 }
 
 function fmtDate(d) {
@@ -259,13 +305,57 @@ function reloadData() {
       }
       RAW = res.data || [];
       buildCategoryList();
-      initDateRange();
-      setStatus('');
+      diagnoseData();
       refresh();
     })
     .catch(function (err) {
       setStatus('載入失敗：' + err.message, 'error');
     });
+}
+
+function diagnoseData() {
+  if (!RAW || RAW.length === 0) {
+    setStatus('⚠️ API 回傳 0 筆資料。請確認 Sheet 有資料、Code.gs 的 SHEET_ID 正確。', 'error');
+    return;
+  }
+  var total = RAW.length;
+  var withDate = 0, failed = 0;
+  var minD = null, maxD = null;
+  var failSamples = [];
+  RAW.forEach(function (r) {
+    var rawVal = r[COL.date];
+    var d = parseDate(rawVal);
+    if (d) {
+      withDate++;
+      if (!minD || d < minD) minD = d;
+      if (!maxD || d > maxD) maxD = d;
+    } else {
+      failed++;
+      if (failSamples.length < 3 && rawVal) failSamples.push(String(rawVal));
+    }
+  });
+
+  var msg = '✅ 共載入 ' + total + ' 筆資料';
+  if (withDate > 0) {
+    msg += '，有效日期 ' + withDate + ' 筆（' + fmtDate(minD) + ' ~ ' + fmtDate(maxD) + '）';
+  }
+  if (failed > 0) {
+    msg += '；無法解析日期 ' + failed + ' 筆';
+    if (failSamples.length) msg += '，範例：' + failSamples.join(' / ');
+  }
+  setStatus(msg, withDate === 0 ? 'error' : 'loading');
+
+  // 自動調整預設日期範圍到實際資料範圍內
+  if (withDate > 0 && maxD) {
+    var today = new Date();
+    today.setHours(0,0,0,0);
+    // 如果實際資料最新日期比今天早，把結束日期設為最新資料日期，起始日期設為最新日期所屬月份的 1 號
+    if (maxD < today) {
+      var startOfMaxMonth = new Date(maxD.getFullYear(), maxD.getMonth(), 1);
+      $('f-start').value = fmtDate(startOfMaxMonth);
+      $('f-end').value = fmtDate(maxD);
+    }
+  }
 }
 
 function buildCategoryList() {
