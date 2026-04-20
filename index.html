@@ -3,59 +3,40 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>不良事件儀表板</title>
+<title>病人安全事件通報儀表板</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   * { box-sizing: border-box; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", "PingFang TC", sans-serif;
-    margin: 0;
-    background: #f5f7fa;
-    color: #1f2937;
-    padding: 16px;
+    margin: 0; background: #f5f7fa; color: #1f2937; padding: 16px;
   }
   h1 { margin: 0 0 4px; font-size: 22px; color: #111827; }
   .subtitle { color: #6b7280; font-size: 13px; margin-bottom: 16px; }
-
   .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 
-  .filter-bar {
-    display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
-    margin-bottom: 16px;
-  }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .btn { padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: #fff; color: #1f2937; cursor: pointer; min-height: 36px; }
+  .btn:hover { background: #f3f4f6; }
+  .btn.primary { background: #2563eb; color: #fff; border-color: #2563eb; font-weight: 600; }
+  .btn.primary:hover { background: #1d4ed8; }
+  .btn.report { background: #059669; color: #fff; border-color: #059669; font-weight: 600; }
+  .btn.report:hover { background: #047857; }
+
+  .filter-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 16px; }
   .filter-bar .field { display: flex; flex-direction: column; gap: 4px; }
   .filter-bar label { font-size: 12px; color: #6b7280; font-weight: 600; }
   .filter-bar input, .filter-bar select, .filter-bar button {
-    padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px;
-    font-size: 14px; background: #fff; color: #1f2937;
-    min-height: 36px;
+    padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: #fff; color: #1f2937; min-height: 36px;
   }
-  .filter-bar button.primary { background: #2563eb; color: #fff; border-color: #2563eb; cursor: pointer; font-weight: 600; }
-  .filter-bar button.primary:hover { background: #1d4ed8; }
-  .filter-bar button.ghost { background: #fff; cursor: pointer; }
-  .filter-bar button.ghost:hover { background: #f3f4f6; }
-
   .presets { display: flex; gap: 6px; flex-wrap: wrap; }
-  .presets button { padding: 6px 10px; font-size: 12px; border-radius: 6px; }
+  .presets button { padding: 6px 10px; font-size: 12px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; }
+  .presets button:hover { background: #f3f4f6; }
 
-  /* 類別多選下拉 */
-  .multi-select {
-    position: relative;
-    min-width: 200px;
-  }
-  .ms-toggle {
-    padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px;
-    background: #fff; cursor: pointer; font-size: 14px; text-align: left; width: 100%;
-    min-height: 36px;
-  }
-  .ms-panel {
-    display: none;
-    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
-    background: #fff; border: 1px solid #d1d5db; border-radius: 8px;
-    max-height: 300px; overflow-y: auto; z-index: 50;
-    box-shadow: 0 4px 12px rgba(0,0,0,.12);
-    padding: 8px;
-  }
+  /* 多選下拉 */
+  .multi-select { position: relative; min-width: 160px; }
+  .ms-toggle { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; cursor: pointer; font-size: 14px; text-align: left; width: 100%; min-height: 36px; }
+  .ms-panel { display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #fff; border: 1px solid #d1d5db; border-radius: 8px; max-height: 300px; overflow-y: auto; z-index: 50; box-shadow: 0 4px 12px rgba(0,0,0,.12); padding: 8px; min-width: 220px; }
   .ms-panel.open { display: block; }
   .ms-panel label { display: flex; align-items: center; gap: 6px; padding: 4px 6px; cursor: pointer; font-size: 14px; color: #1f2937; }
   .ms-panel label:hover { background: #f3f4f6; border-radius: 4px; }
@@ -63,45 +44,84 @@
   .ms-actions button { padding: 4px 8px; font-size: 12px; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; cursor: pointer; }
 
   /* KPI */
-  .kpi-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 12px; margin-bottom: 16px;
-  }
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
   .kpi { padding: 14px 16px; }
   .kpi .label { font-size: 13px; color: #6b7280; font-weight: 600; margin-bottom: 6px; }
   .kpi .value { font-size: 28px; font-weight: 700; color: #111827; line-height: 1.2; }
   .kpi .deltas { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; font-size: 12px; }
   .kpi .delta { display: flex; justify-content: space-between; }
   .kpi .delta .k { color: #9ca3af; }
-  .delta-up   { color: #dc2626; font-weight: 600; }   /* 事件數升高 = 紅 */
-  .delta-down { color: #059669; font-weight: 600; }   /* 事件數降低 = 綠 */
+  .delta-up   { color: #dc2626; font-weight: 600; }
+  .delta-down { color: #059669; font-weight: 600; }
   .delta-flat { color: #6b7280; }
 
   /* Chart grid */
-  .chart-grid {
-    display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px;
-  }
+  .chart-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
   .chart-card h3 { margin: 0 0 10px; font-size: 14px; color: #374151; font-weight: 600; }
   .c-full { grid-column: span 12; }
   .c-half { grid-column: span 6; }
   .c-third { grid-column: span 4; }
-
   .chart-box { position: relative; height: 280px; }
   .chart-box.tall { height: 360px; }
 
+  /* Cross tables */
+  table.cross { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.cross th, table.cross td { border: 1px solid #e5e7eb; padding: 6px 8px; text-align: center; vertical-align: middle; }
+  table.cross th { background: #f3f4f6; color: #374151; font-weight: 600; }
+  table.cross thead th { position: sticky; top: 0; }
+  table.cross td.rowh { text-align: left; background: #fafafa; font-weight: 600; color: #374151; }
+  table.cross td.num { font-variant-numeric: tabular-nums; }
+  table.cross td.total { background: #eff6ff; font-weight: 700; color: #1e3a8a; }
+  .heat-wrap { overflow-x: auto; }
+
   .empty { text-align: center; color: #9ca3af; padding: 30px; font-size: 14px; }
-  .loading { text-align: center; color: #2563eb; padding: 40px; font-size: 14px; }
+  .loading { text-align: center; color: #2563eb; padding: 12px; font-size: 14px; }
   .error { text-align: center; color: #dc2626; padding: 20px; font-size: 14px; background: #fef2f2; border-radius: 8px; }
 
   @media (max-width: 900px) {
     .c-half, .c-third { grid-column: span 12; }
   }
+
+  /* ========== 月報模式 ========== */
+  body.report-mode .filter-bar,
+  body.report-mode #dashboard,
+  body.report-mode .toolbar .btn:not(.back) { display: none; }
+  body.report-mode .report-page { display: block !important; }
+  body.report-mode { background: #fff; }
+
+  .report-page { display: none; max-width: 900px; margin: 0 auto; padding: 20px; background: #fff; }
+  .report-head { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #111827; padding-bottom: 12px; }
+  .report-head h2 { margin: 0; font-size: 22px; color: #111827; }
+  .report-head .hospital { font-size: 16px; color: #374151; margin-bottom: 6px; font-weight: 600; }
+  .report-head input { border: 1px dashed #d1d5db; padding: 4px 8px; font-size: 16px; text-align: center; border-radius: 4px; }
+
+  .report-section { margin: 22px 0; page-break-inside: avoid; }
+  .report-section h3 { font-size: 16px; color: #111827; margin: 0 0 10px; border-left: 4px solid #2563eb; padding-left: 10px; }
+  .report-section p { font-size: 14px; line-height: 1.7; color: #1f2937; margin: 8px 0; }
+  .report-section table { font-size: 12px; }
+
+  /* Print */
+  @media print {
+    body { background: #fff; padding: 0; }
+    .toolbar, .filter-bar, #dashboard, #status { display: none !important; }
+    .report-page { display: block !important; max-width: 100%; }
+    .report-section { page-break-inside: avoid; }
+    table.cross th, table.cross td { font-size: 11px; padding: 4px 6px; }
+  }
 </style>
 </head>
 <body>
 
-<h1>不良事件儀表板</h1>
-<div class="subtitle">可依日期範圍與事件類別篩選，並與上月同期、去年同期比較</div>
+<h1 id="page-title">病人安全事件通報儀表板</h1>
+<div class="subtitle" id="page-subtitle">可依日期 × 單位 × 嚴重程度 × 通報者 × 事件類別篩選，並與上月、去年同期比較</div>
+
+<div class="toolbar">
+  <button type="button" class="btn primary" onclick="refresh()">套用篩選</button>
+  <button type="button" class="btn" onclick="reloadData()">重新載入資料</button>
+  <button type="button" class="btn report" onclick="enterReportMode()">📄 月報模式</button>
+  <button type="button" class="btn back" style="display:none" onclick="exitReportMode()">← 回儀表板</button>
+  <button type="button" class="btn back" style="display:none" onclick="window.print()">🖨️ 列印 / 存 PDF</button>
+</div>
 
 <div class="card filter-bar" id="filter-bar">
   <div class="field">
@@ -112,520 +132,484 @@
     <label>結束日期</label>
     <input type="date" id="f-end" />
   </div>
-  <div class="field" style="flex: 1; min-width: 200px;">
-    <label>事件類別</label>
-    <div class="multi-select" id="ms-category">
-      <button type="button" class="ms-toggle" id="ms-toggle">全部類別</button>
-      <div class="ms-panel" id="ms-panel">
-        <div class="ms-actions">
-          <button type="button" onclick="msSelectAll(true)">全選</button>
-          <button type="button" onclick="msSelectAll(false)">全不選</button>
-        </div>
-        <div id="ms-options"></div>
-      </div>
-    </div>
-  </div>
   <div class="field">
     <label>快速選擇</label>
     <div class="presets">
-      <button type="button" class="ghost" onclick="applyPreset('30d')">近30天</button>
-      <button type="button" class="ghost" onclick="applyPreset('thisMonth')">本月</button>
-      <button type="button" class="ghost" onclick="applyPreset('lastMonth')">上月</button>
-      <button type="button" class="ghost" onclick="applyPreset('ytd')">今年</button>
+      <button type="button" onclick="applyPreset('30d')">近30天</button>
+      <button type="button" onclick="applyPreset('thisMonth')">本月</button>
+      <button type="button" onclick="applyPreset('lastMonth')">上月</button>
+      <button type="button" onclick="applyPreset('ytd')">今年</button>
     </div>
   </div>
-  <div class="field">
-    <label>&nbsp;</label>
-    <button type="button" class="primary" onclick="refresh()">套用</button>
-  </div>
-  <div class="field">
-    <label>&nbsp;</label>
-    <button type="button" class="ghost" onclick="reloadData()">重新載入</button>
-  </div>
+  <div class="field"><label>事件類別</label><div class="multi-select" id="ms-category"></div></div>
+  <div class="field"><label>發生單位</label><div class="multi-select" id="ms-unit"></div></div>
+  <div class="field"><label>嚴重程度</label><div class="multi-select" id="ms-severity"></div></div>
+  <div class="field"><label>通報者身分</label><div class="multi-select" id="ms-reporter"></div></div>
 </div>
 
 <div id="status"></div>
 
-<div id="kpi-grid" class="kpi-grid"></div>
+<!-- ====== 儀表板區 ====== -->
+<div id="dashboard">
+  <div id="kpi-grid" class="kpi-grid"></div>
 
-<div class="chart-grid">
-  <div class="card chart-card c-full">
-    <h3>事件趨勢（本期 vs 上月同期 vs 去年同期）</h3>
-    <div class="chart-box tall"><canvas id="chart-trend"></canvas></div>
+  <div class="chart-grid">
+    <div class="card chart-card c-full">
+      <h3>事件趨勢（本期 vs 上月同期 vs 去年同期）</h3>
+      <div class="chart-box tall"><canvas id="chart-trend"></canvas></div>
+    </div>
+
+    <div class="card chart-card c-half">
+      <h3>事件類別分布</h3>
+      <div class="chart-box"><canvas id="chart-category"></canvas></div>
+    </div>
+    <div class="card chart-card c-half">
+      <h3>通報意願分布</h3>
+      <div class="chart-box"><canvas id="chart-willingness"></canvas></div>
+    </div>
+
+    <div class="card chart-card c-full">
+      <h3>SAC 決策矩陣（發生頻率 × 嚴重程度）</h3>
+      <div class="heat-wrap" id="sac-matrix"></div>
+    </div>
+
+    <div class="card chart-card c-full">
+      <h3>單位別 × 事件分類</h3>
+      <div class="heat-wrap" id="unit-cat-matrix"></div>
+    </div>
+
+    <div class="card chart-card c-full" id="tube-section">
+      <h3>管路專區（管路種類 × 異常類別）</h3>
+      <div class="heat-wrap" id="tube-matrix"></div>
+      <div id="tube-stats" style="margin-top: 10px; color: #374151; font-size: 14px;"></div>
+    </div>
+
+    <div class="card chart-card c-half">
+      <h3>通報者身分 × 事件類別</h3>
+      <div class="chart-box tall"><canvas id="chart-reporter-cat"></canvas></div>
+    </div>
+    <div class="card chart-card c-half">
+      <h3>發生階段</h3>
+      <div class="chart-box"><canvas id="chart-stage"></canvas></div>
+    </div>
+
+    <div class="card chart-card c-half">
+      <h3>發生主原因 Top 10</h3>
+      <div class="chart-box"><canvas id="chart-cause"></canvas></div>
+    </div>
+    <div class="card chart-card c-half">
+      <h3>SAC 分級分布</h3>
+      <div class="chart-box"><canvas id="chart-sac"></canvas></div>
+    </div>
+
+    <div class="card chart-card c-half">
+      <h3>嚴重程度</h3>
+      <div class="chart-box"><canvas id="chart-severity"></canvas></div>
+    </div>
+    <div class="card chart-card c-half">
+      <h3>發生單位 Top 10</h3>
+      <div class="chart-box"><canvas id="chart-unit"></canvas></div>
+    </div>
   </div>
-  <div class="card chart-card c-half">
-    <h3>事件類別分布</h3>
-    <div class="chart-box"><canvas id="chart-category"></canvas></div>
+</div>
+
+<!-- ====== 月報模式（靜態） ====== -->
+<div id="report-page" class="report-page">
+  <div class="report-head">
+    <div class="hospital">
+      <input type="text" id="rep-hospital" value="澄清綜合醫院（平等）" style="width: 260px;" />
+    </div>
+    <h2 id="rep-title">XXX 年 XX 月 病人安全事件通報 月統計表</h2>
+    <div style="font-size: 12px; color: #6b7280; margin-top: 6px;" id="rep-period"></div>
   </div>
-  <div class="card chart-card c-half">
-    <h3>發生階段</h3>
-    <div class="chart-box"><canvas id="chart-stage"></canvas></div>
+
+  <div class="report-section">
+    <h3>一、嚴重程度評估準則（SAC）：決策矩陣</h3>
+    <div id="rep-sac-matrix"></div>
   </div>
-  <div class="card chart-card c-half">
-    <h3>發生主原因 Top 10</h3>
-    <div class="chart-box"><canvas id="chart-cause"></canvas></div>
+
+  <div class="report-section">
+    <h3>二、SAC 等級別統計分析</h3>
+    <div id="rep-sac-level"></div>
   </div>
-  <div class="card chart-card c-half">
-    <h3>SAC 分級分布</h3>
-    <div class="chart-box"><canvas id="chart-sac"></canvas></div>
+
+  <div class="report-section">
+    <h3>三、單位別 × 事件分類</h3>
+    <div id="rep-unit-cat"></div>
   </div>
-  <div class="card chart-card c-half">
-    <h3>嚴重程度</h3>
-    <div class="chart-box"><canvas id="chart-severity"></canvas></div>
+
+  <div class="report-section">
+    <h3>四、事件分類佔率</h3>
+    <div id="rep-cat-pct"></div>
   </div>
-  <div class="card chart-card c-half">
-    <h3>發生單位 Top 10</h3>
-    <div class="chart-box"><canvas id="chart-unit"></canvas></div>
+
+  <div class="report-section">
+    <h3>五、通報意願分析</h3>
+    <div id="rep-willingness"></div>
+  </div>
+
+  <div class="report-section">
+    <h3>六、通報者身分 × 事件類別交叉分析</h3>
+    <div id="rep-reporter-cat"></div>
+  </div>
+
+  <div class="report-section" id="rep-tube-section">
+    <h3>七、管路事件分析</h3>
+    <div id="rep-tube"></div>
+  </div>
+
+  <div class="report-section">
+    <h3>八、與上月、去年同期比較</h3>
+    <div id="rep-compare"></div>
   </div>
 </div>
 
 <script>
 // ====== 設定 ======
-// 部署完 Apps Script 後，把 Web App URL 貼到這裡
 var API_URL = 'https://script.google.com/macros/s/AKfycbweUGwYnhtCwugrG8FvquIO9rwXBZB0MJNfJiSD6g2wGw8a711vimlkzVc1cEZnONn4/exec';
 
-// 欄位名稱（對應 Sheet 標題列）
 var COL = {
   date: '日期',
   category: '事件類別',
   unit: '發生單位',
   stage: '發生階段',
+  tube: '管路種類',
   cause: '發生主原因',
+  subCause: '發生次原因',
+  restraint: '約束',
+  reintub: '重新插管',
   sac: 'SAC分級',
-  severity: '嚴重程度'
+  severity: '嚴重程度',
+  freq: '發生頻率',
+  reporter: '通報者身分',
+  willingness: '通報意願'
 };
 
-// ====== 全域狀態 ======
-var RAW = [];          // 全部資料（從 API 取回）
-var CATEGORIES = [];   // 類別清單
-var CAT_SELECTED = {}; // { '跌倒': true, ... }
-var CHARTS = {};       // Chart 實例
+// 月報固定的維度（對齊 PDF）
+var SAC_FREQ_ORDER  = ['數週', '一年數次', '1~2年一次', '2~5年一次', '5年以上', '不知道'];
+var SAC_SEVERITY_ORDER = ['死亡', '極重度', '重度', '中度', '輕度', '無傷害', '跡近錯失', '無法判定'];
+var REPORT_CATEGORIES = ['跌倒', '藥物', '醫療處置', '治安意外', '公共意外', '管路', '輸血', '手術', '傷害', '不預期心跳停止', '麻醉', '檢查(驗)病理切片', '其他'];
+var TUBE_TYPES = ['靜脈注射導管', '透析迴路管', '導尿管', '氣管內管口管', '氣管內管', '中心靜脈導管', '鼻胃管'];
+var TUBE_ABNORMAL = ['腫脹', '滲漏', '阻塞', '自拔', '滑脫'];
 
-// ====== 工具 ======
+// ====== 全域狀態 ======
+var RAW = [];
+var FILTERS = {
+  cats: {}, units: {}, severities: {}, reporters: {}
+};
+var CATEGORIES = [], UNITS = [], SEVERITIES = [], REPORTERS = [];
+var CHARTS = {};
+
 function $(id) { return document.getElementById(id); }
 
+// ====== 日期 ======
 function parseDate(s) {
   if (s === null || s === undefined || s === '') return null;
-  // 已經是 Date 物件
-  if (s instanceof Date && !isNaN(s)) {
-    return new Date(s.getFullYear(), s.getMonth(), s.getDate());
-  }
+  if (s instanceof Date && !isNaN(s)) return new Date(s.getFullYear(), s.getMonth(), s.getDate());
   var raw = String(s).trim();
   if (!raw) return null;
-
-  // 1) ISO 格式 "2026-03-15T16:00:00.000Z" → 取前10碼（用 Date 解析避開 UTC 位移）
   var isoM = raw.match(/^(\d{4})-(\d{2})-(\d{2})T/);
-  if (isoM) {
-    return new Date(parseInt(isoM[1],10), parseInt(isoM[2],10)-1, parseInt(isoM[3],10));
-  }
-
-  // 2) "2026-03-15" / "2026/3/15" / "2026.3.15"
+  if (isoM) return new Date(parseInt(isoM[1],10), parseInt(isoM[2],10)-1, parseInt(isoM[3],10));
   var norm = raw.replace(/[\/\.]/g, '-').slice(0, 10);
   var m = norm.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (m) return new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10));
-
-  // 3) 民國年 "115/3/15" 或 "115-03-15"
   var rocM = raw.replace(/[\/\.]/g, '-').match(/^(\d{2,3})-(\d{1,2})-(\d{1,2})$/);
-  if (rocM) {
-    var ryear = parseInt(rocM[1],10);
-    if (ryear < 200) ryear += 1911;
-    return new Date(ryear, parseInt(rocM[2],10)-1, parseInt(rocM[3],10));
-  }
-
-  // 4) 中文 "2026年3月15日"
+  if (rocM) { var ry = parseInt(rocM[1],10); if (ry<200) ry+=1911; return new Date(ry, parseInt(rocM[2],10)-1, parseInt(rocM[3],10)); }
   var cnM = raw.match(/(\d{2,4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?/);
-  if (cnM) {
-    var cy = parseInt(cnM[1],10);
-    if (cy < 200) cy += 1911;
-    return new Date(cy, parseInt(cnM[2],10)-1, parseInt(cnM[3],10));
-  }
-
-  // 5) Excel 序列號（數字）
+  if (cnM) { var cy = parseInt(cnM[1],10); if (cy<200) cy+=1911; return new Date(cy, parseInt(cnM[2],10)-1, parseInt(cnM[3],10)); }
   if (/^\d+(\.\d+)?$/.test(raw)) {
     var n = parseFloat(raw);
     if (n > 20000 && n < 80000) {
-      var excelEpoch = new Date(1899, 11, 30);
-      var ms = excelEpoch.getTime() + n * 86400000;
-      var dd2 = new Date(ms);
-      return new Date(dd2.getFullYear(), dd2.getMonth(), dd2.getDate());
+      var epoch = new Date(1899, 11, 30);
+      var d = new Date(epoch.getTime() + n * 86400000);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
     }
   }
-
-  // 6) 交給瀏覽器試解析
-  var parsed = new Date(raw);
-  if (!isNaN(parsed)) {
-    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
-  }
+  var p = new Date(raw);
+  if (!isNaN(p)) return new Date(p.getFullYear(), p.getMonth(), p.getDate());
   return null;
 }
 
 function fmtDate(d) {
   if (!d) return '';
-  var y = d.getFullYear();
-  var m = String(d.getMonth() + 1).padStart(2, '0');
-  var dd = String(d.getDate()).padStart(2, '0');
-  return y + '-' + m + '-' + dd;
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
+function shiftMonths(d, n) { var nd = new Date(d.getTime()); nd.setMonth(nd.getMonth()+n); return nd; }
+function shiftYears(d, n)  { var nd = new Date(d.getTime()); nd.setFullYear(nd.getFullYear()+n); return nd; }
+function addDays(d, n)     { var nd = new Date(d.getTime()); nd.setDate(nd.getDate()+n); return nd; }
 
-function shiftMonths(d, n) {
-  var nd = new Date(d.getTime());
-  nd.setMonth(nd.getMonth() + n);
-  return nd;
-}
-function shiftYears(d, n) {
-  var nd = new Date(d.getTime());
-  nd.setFullYear(nd.getFullYear() + n);
-  return nd;
-}
-function addDays(d, n) {
-  var nd = new Date(d.getTime());
-  nd.setDate(nd.getDate() + n);
-  return nd;
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
 }
 
 function setStatus(html, type) {
   var s = $('status');
   if (!html) { s.innerHTML = ''; return; }
-  s.innerHTML = '<div class="card ' + (type || 'loading') + '">' + html + '</div>';
+  s.innerHTML = '<div class="card ' + (type || 'loading') + '" style="margin-bottom:12px">' + html + '</div>';
 }
 
-// ====== 載入資料 ======
+// ====== 載入 ======
 function reloadData() {
   if (!API_URL || API_URL.indexOf('PASTE_YOUR') === 0) {
-    setStatus('⚠️ 尚未設定 API_URL。請先部署 Apps Script，把 Web App URL 貼到 dashboard.html 第一段 JavaScript 裡的 API_URL 變數。', 'error');
-    return;
+    setStatus('⚠️ 尚未設定 API_URL', 'error'); return;
   }
   setStatus('載入中...', 'loading');
   fetch(API_URL + '?action=getData')
     .then(function (r) { return r.json(); })
     .then(function (res) {
-      if (res.error) {
-        setStatus('載入失敗：' + res.error, 'error');
-        return;
-      }
+      if (res.error) { setStatus('載入失敗：' + res.error, 'error'); return; }
       RAW = res.data || [];
-      buildCategoryList();
+      buildFilters();
       diagnoseData();
       refresh();
     })
-    .catch(function (err) {
-      setStatus('載入失敗：' + err.message, 'error');
-    });
+    .catch(function (err) { setStatus('載入失敗：' + err.message, 'error'); });
 }
 
 function diagnoseData() {
-  if (!RAW || RAW.length === 0) {
-    setStatus('⚠️ API 回傳 0 筆資料。請確認 Sheet 有資料、Code.gs 的 SHEET_ID 正確。', 'error');
-    return;
-  }
-  var total = RAW.length;
-  var withDate = 0, failed = 0;
-  var minD = null, maxD = null;
-  var failSamples = [];
+  if (!RAW.length) { setStatus('⚠️ Sheet 沒有資料', 'error'); return; }
+  var withDate = 0, minD = null, maxD = null, failed = [];
   RAW.forEach(function (r) {
-    var rawVal = r[COL.date];
-    var d = parseDate(rawVal);
-    if (d) {
-      withDate++;
-      if (!minD || d < minD) minD = d;
-      if (!maxD || d > maxD) maxD = d;
-    } else {
-      failed++;
-      if (failSamples.length < 3 && rawVal) failSamples.push(String(rawVal));
-    }
+    var d = parseDate(r[COL.date]);
+    if (d) { withDate++; if (!minD || d < minD) minD = d; if (!maxD || d > maxD) maxD = d; }
+    else if (r[COL.date] && failed.length < 3) failed.push(String(r[COL.date]));
   });
-
-  var msg = '✅ 共載入 ' + total + ' 筆資料';
-  if (withDate > 0) {
-    msg += '，有效日期 ' + withDate + ' 筆（' + fmtDate(minD) + ' ~ ' + fmtDate(maxD) + '）';
-  }
-  if (failed > 0) {
-    msg += '；無法解析日期 ' + failed + ' 筆';
-    if (failSamples.length) msg += '，範例：' + failSamples.join(' / ');
-  }
+  var msg = '✅ 載入 ' + RAW.length + ' 筆';
+  if (withDate) msg += '，有效日期 ' + withDate + ' 筆（' + fmtDate(minD) + ' ~ ' + fmtDate(maxD) + '）';
+  if (failed.length) msg += '；無法解析：' + failed.join(', ');
   setStatus(msg, withDate === 0 ? 'error' : 'loading');
-
-  // 自動調整預設日期範圍到實際資料範圍內
   if (withDate > 0 && maxD) {
-    var today = new Date();
-    today.setHours(0,0,0,0);
-    // 如果實際資料最新日期比今天早，把結束日期設為最新資料日期，起始日期設為最新日期所屬月份的 1 號
+    var today = new Date(); today.setHours(0,0,0,0);
     if (maxD < today) {
-      var startOfMaxMonth = new Date(maxD.getFullYear(), maxD.getMonth(), 1);
-      $('f-start').value = fmtDate(startOfMaxMonth);
-      $('f-end').value = fmtDate(maxD);
+      $('f-start').value = fmtDate(new Date(maxD.getFullYear(), maxD.getMonth(), 1));
+      $('f-end').value = fmtDate(new Date(maxD.getFullYear(), maxD.getMonth()+1, 0));
     }
   }
 }
 
-function buildCategoryList() {
-  var set = {};
+// ====== 多選 filter ======
+function buildFilters() {
+  var cats = {}, units = {}, sevs = {}, reps = {};
   RAW.forEach(function (r) {
-    var c = (r[COL.category] || '').trim();
-    if (c) set[c] = true;
+    if (r[COL.category]) cats[String(r[COL.category]).trim()] = true;
+    if (r[COL.unit])     units[String(r[COL.unit]).trim()] = true;
+    if (r[COL.severity]) sevs[String(r[COL.severity]).trim()] = true;
+    if (r[COL.reporter]) reps[String(r[COL.reporter]).trim()] = true;
   });
-  CATEGORIES = Object.keys(set).sort();
-  // 預設全選
-  CAT_SELECTED = {};
-  CATEGORIES.forEach(function (c) { CAT_SELECTED[c] = true; });
-  renderCategoryOptions();
+  CATEGORIES = Object.keys(cats).sort();
+  UNITS      = Object.keys(units).sort();
+  SEVERITIES = Object.keys(sevs).sort();
+  REPORTERS  = Object.keys(reps).sort();
+
+  FILTERS.cats = {}; CATEGORIES.forEach(function(c){ FILTERS.cats[c] = true; });
+  FILTERS.units = {}; UNITS.forEach(function(u){ FILTERS.units[u] = true; });
+  FILTERS.severities = {}; SEVERITIES.forEach(function(s){ FILTERS.severities[s] = true; });
+  FILTERS.reporters = {}; REPORTERS.forEach(function(r){ FILTERS.reporters[r] = true; });
+
+  renderMulti('ms-category', CATEGORIES, FILTERS.cats, '類別');
+  renderMulti('ms-unit',     UNITS,      FILTERS.units, '單位');
+  renderMulti('ms-severity', SEVERITIES, FILTERS.severities, '嚴重程度');
+  renderMulti('ms-reporter', REPORTERS,  FILTERS.reporters, '通報者');
 }
 
-function renderCategoryOptions() {
-  var html = '';
-  CATEGORIES.forEach(function (c, i) {
-    html += '<label><input type="checkbox" data-cat="' + i + '"' +
-      (CAT_SELECTED[c] ? ' checked' : '') + '>' + escapeHtml(c) + '</label>';
-  });
-  $('ms-options').innerHTML = html;
-  $('ms-options').querySelectorAll('input[type=checkbox]').forEach(function (cb) {
+function renderMulti(containerId, items, selected, itemName) {
+  var container = $(containerId);
+  if (!container) return;
+  var html = '<button type="button" class="ms-toggle" data-target="' + containerId + '-panel">全部' + itemName + '</button>' +
+    '<div class="ms-panel" id="' + containerId + '-panel">' +
+      '<div class="ms-actions">' +
+        '<button type="button" onclick="msAll(\'' + containerId + '\', true)">全選</button>' +
+        '<button type="button" onclick="msAll(\'' + containerId + '\', false)">全不選</button>' +
+      '</div>' +
+      '<div class="ms-options"></div>' +
+    '</div>';
+  container.innerHTML = html;
+
+  var opts = container.querySelector('.ms-options');
+  items.forEach(function (it, i) {
+    var id = containerId + '-chk-' + i;
+    var lbl = document.createElement('label');
+    var cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.id = id; cb.checked = !!selected[it];
+    cb.dataset.item = it;
     cb.addEventListener('change', function () {
-      var cat = CATEGORIES[parseInt(cb.getAttribute('data-cat'), 10)];
-      CAT_SELECTED[cat] = cb.checked;
-      updateMsLabel();
+      selected[it] = cb.checked;
+      updateMsLabel(containerId, items, selected, itemName);
     });
+    var span = document.createElement('span'); span.textContent = it;
+    lbl.appendChild(cb); lbl.appendChild(span);
+    opts.appendChild(lbl);
   });
-  updateMsLabel();
-}
 
-function updateMsLabel() {
-  var selected = CATEGORIES.filter(function (c) { return CAT_SELECTED[c]; });
-  var label;
-  if (selected.length === 0) label = '未選取任何類別';
-  else if (selected.length === CATEGORIES.length) label = '全部類別（' + CATEGORIES.length + '）';
-  else if (selected.length <= 2) label = selected.join('、');
-  else label = '已選 ' + selected.length + ' 類';
-  $('ms-toggle').textContent = label;
-}
-
-function msSelectAll(val) {
-  CATEGORIES.forEach(function (c) { CAT_SELECTED[c] = !!val; });
-  renderCategoryOptions();
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, function (c) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-  });
-}
-
-// 點擊外面關閉下拉
-document.addEventListener('click', function (e) {
-  var ms = $('ms-category');
-  if (!ms.contains(e.target)) $('ms-panel').classList.remove('open');
-});
-document.addEventListener('DOMContentLoaded', function () {
-  $('ms-toggle').addEventListener('click', function (e) {
+  container.querySelector('.ms-toggle').addEventListener('click', function (e) {
     e.stopPropagation();
-    $('ms-panel').classList.toggle('open');
+    var allPanels = document.querySelectorAll('.ms-panel');
+    var myPanel = container.querySelector('.ms-panel');
+    allPanels.forEach(function (p) { if (p !== myPanel) p.classList.remove('open'); });
+    myPanel.classList.toggle('open');
+  });
+  updateMsLabel(containerId, items, selected, itemName);
+}
+
+function updateMsLabel(containerId, items, selected, itemName) {
+  var on = items.filter(function(x){ return selected[x]; });
+  var btn = $(containerId).querySelector('.ms-toggle');
+  if (on.length === 0) btn.textContent = '未選' + itemName;
+  else if (on.length === items.length) btn.textContent = '全部' + itemName + '（' + items.length + '）';
+  else if (on.length <= 2) btn.textContent = on.join('、');
+  else btn.textContent = '已選 ' + on.length + ' 項';
+}
+
+function msAll(containerId, val) {
+  var map = {
+    'ms-category': {items: CATEGORIES, sel: FILTERS.cats, name: '類別'},
+    'ms-unit':     {items: UNITS,      sel: FILTERS.units, name: '單位'},
+    'ms-severity': {items: SEVERITIES, sel: FILTERS.severities, name: '嚴重程度'},
+    'ms-reporter': {items: REPORTERS,  sel: FILTERS.reporters, name: '通報者'}
+  };
+  var cfg = map[containerId];
+  cfg.items.forEach(function(it){ cfg.sel[it] = !!val; });
+  cfg.items.forEach(function (it, i) {
+    var cb = $(containerId + '-chk-' + i);
+    if (cb) cb.checked = !!val;
+  });
+  updateMsLabel(containerId, cfg.items, cfg.sel, cfg.name);
+}
+
+document.addEventListener('click', function (e) {
+  document.querySelectorAll('.ms-panel').forEach(function (p) {
+    if (!p.parentElement.contains(e.target)) p.classList.remove('open');
   });
 });
 
 // ====== 日期範圍 ======
-function initDateRange() {
-  // 預設：本月
-  applyPreset('thisMonth', true);
+function applyPreset(key) {
+  var today = new Date(); today.setHours(0,0,0,0);
+  var s, e;
+  if (key === '30d') { e = today; s = addDays(today, -29); }
+  else if (key === 'thisMonth') { s = new Date(today.getFullYear(), today.getMonth(), 1); e = today; }
+  else if (key === 'lastMonth') { s = new Date(today.getFullYear(), today.getMonth()-1, 1); e = new Date(today.getFullYear(), today.getMonth(), 0); }
+  else if (key === 'ytd') { s = new Date(today.getFullYear(), 0, 1); e = today; }
+  $('f-start').value = fmtDate(s);
+  $('f-end').value = fmtDate(e);
+  refresh();
 }
 
-function applyPreset(key, skipRefresh) {
-  var today = new Date();
-  today.setHours(0, 0, 0, 0);
-  var start, end;
-  if (key === '30d') {
-    end = today;
-    start = addDays(today, -29);
-  } else if (key === 'thisMonth') {
-    start = new Date(today.getFullYear(), today.getMonth(), 1);
-    end = today;
-  } else if (key === 'lastMonth') {
-    start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    end = new Date(today.getFullYear(), today.getMonth(), 0);
-  } else if (key === 'ytd') {
-    start = new Date(today.getFullYear(), 0, 1);
-    end = today;
-  }
-  $('f-start').value = fmtDate(start);
-  $('f-end').value = fmtDate(end);
-  if (!skipRefresh) refresh();
-}
-
-// ====== 篩選 ======
 function getFilters() {
-  var start = parseDate($('f-start').value);
-  var end = parseDate($('f-end').value);
-  if (start && end && start > end) { var t = start; start = end; end = t; }
-  return { start: start, end: end };
+  var s = parseDate($('f-start').value);
+  var e = parseDate($('f-end').value);
+  if (s && e && s > e) { var t = s; s = e; e = t; }
+  return { start: s, end: e };
 }
 
-function filterRows(rows, start, end) {
+function filterRows(rows, start, end, opts) {
+  opts = opts || {};
   return rows.filter(function (r) {
     var d = parseDate(r[COL.date]);
     if (!d) return false;
     if (start && d < start) return false;
     if (end && d > end) return false;
-    var c = (r[COL.category] || '').trim();
-    if (CATEGORIES.length > 0 && !CAT_SELECTED[c]) return false;
+    if (!opts.skipCat && CATEGORIES.length && !FILTERS.cats[String(r[COL.category]||'').trim()]) return false;
+    if (!opts.skipUnit && UNITS.length && !FILTERS.units[String(r[COL.unit]||'').trim()]) return false;
+    if (!opts.skipSev && SEVERITIES.length && !FILTERS.severities[String(r[COL.severity]||'').trim()]) return false;
+    if (!opts.skipRep && REPORTERS.length && !FILTERS.reporters[String(r[COL.reporter]||'').trim()]) return false;
     return true;
   });
 }
 
-// 把 [start, end] 平移 n 個月
-function shiftRange(start, end, months, years) {
-  var s = start, e = end;
-  if (months) { s = shiftMonths(s, months); e = shiftMonths(e, months); }
-  if (years)  { s = shiftYears(s, years);   e = shiftYears(e, years);   }
-  return { start: s, end: e };
-}
-
-// ====== 指標 & 圖表 ======
+// ====== 主入口 ======
 function refresh() {
-  if (!RAW || RAW.length === 0) {
-    setStatus('尚未載入資料', 'error');
-    return;
-  }
+  if (!RAW.length) return;
   var f = getFilters();
-  if (!f.start || !f.end) {
-    setStatus('請選擇起始與結束日期', 'error');
-    return;
-  }
-  setStatus('');
+  if (!f.start || !f.end) { setStatus('請選擇日期範圍', 'error'); return; }
 
   var cur = filterRows(RAW, f.start, f.end);
-  var lmR = shiftRange(f.start, f.end, -1, 0);
-  var lm  = filterRows(RAW, lmR.start, lmR.end);
-  var lyR = shiftRange(f.start, f.end, 0, -1);
-  var ly  = filterRows(RAW, lyR.start, lyR.end);
+  var lmR = { s: shiftMonths(f.start, -1), e: shiftMonths(f.end, -1) };
+  var lyR = { s: shiftYears(f.start, -1),  e: shiftYears(f.end, -1) };
+  var lm = filterRows(RAW, lmR.s, lmR.e);
+  var ly = filterRows(RAW, lyR.s, lyR.e);
 
   renderKPIs(cur, lm, ly);
   renderTrend(cur, lm, ly, f.start, f.end);
-  renderCategory(cur);
-  renderStage(cur);
-  renderCause(cur);
-  renderSac(cur);
-  renderSeverity(cur);
-  renderUnit(cur);
+  renderCategoryChart(cur);
+  renderWillingness(cur);
+  renderSacMatrix(cur, 'sac-matrix');
+  renderUnitCatMatrix(cur, 'unit-cat-matrix');
+  renderTubeSection(cur);
+  renderReporterCatChart(cur);
+  renderBar('chart-stage', 'stage', sortedEntries(groupCount(cur, COL.stage)), '#16a34a', true);
+  renderBar('chart-cause', 'cause', sortedEntries(groupCount(cur, COL.cause), 10), '#dc2626', true);
+  renderBar('chart-sac', 'sac', sortedEntries(groupCount(cur, COL.sac)).sort(sacSort), '#7c3aed', false);
+  renderBar('chart-severity', 'severity', sortedEntries(groupCount(cur, COL.severity)), '#f59e0b', false);
+  renderBar('chart-unit', 'unit', sortedEntries(groupCount(cur, COL.unit), 10), '#0891b2', true);
 }
 
+function sacSort(a, b) {
+  var ai = parseInt((String(a.k).match(/\d+/) || [99])[0], 10);
+  var bi = parseInt((String(b.k).match(/\d+/) || [99])[0], 10);
+  return ai - bi;
+}
+
+// ====== KPI ======
 function deltaBadge(cur, prev) {
-  if (prev === 0) {
-    if (cur === 0) return '<span class="delta-flat">—</span>';
-    return '<span class="delta-up">新增 ' + cur + '</span>';
-  }
-  var diff = cur - prev;
-  var pct = Math.round((diff / prev) * 1000) / 10;
-  var sign = diff > 0 ? '▲' : (diff < 0 ? '▼' : '—');
-  var cls = diff > 0 ? 'delta-up' : (diff < 0 ? 'delta-down' : 'delta-flat');
+  if (prev === 0) return cur === 0 ? '<span class="delta-flat">—</span>' : '<span class="delta-up">新增 ' + cur + '</span>';
+  var d = cur - prev, pct = Math.round((d/prev)*1000)/10;
+  var sign = d>0 ? '▲' : (d<0 ? '▼' : '—');
+  var cls  = d>0 ? 'delta-up' : (d<0 ? 'delta-down' : 'delta-flat');
   return '<span class="' + cls + '">' + sign + ' ' + Math.abs(pct) + '% (' + prev + ')</span>';
 }
-
-function count(rows) { return rows.length; }
-function countWhere(rows, key, test) {
-  var n = 0;
-  rows.forEach(function (r) { if (test(r[key])) n++; });
-  return n;
-}
+function countWhere(rows, key, test) { var n=0; rows.forEach(function(r){ if(test(r[key])) n++; }); return n; }
+function isHighSac(v) { var m = String(v||'').match(/\d+/); return !!m && parseInt(m[0],10) >= 3; }
+function isSevere(v) { return /警訊|嚴重|重大|死亡|極重度|重度/.test(String(v||'')); }
+function isDeath(v) { return /死亡/.test(String(v||'')); }
+function isNearMiss(v) { return /跡近|near/i.test(String(v||'')); }
+function isReintub(v) { var s=String(v||'').trim(); if(!s) return false; return !/^(否|無|n|no|0|false)$/i.test(s); }
 
 function renderKPIs(cur, lm, ly) {
-  var curN = count(cur);
-  var lmN = count(lm);
-  var lyN = count(ly);
-
-  // SAC 分級 3 以上視為高風險
-  function isHighSac(v) {
-    var m = String(v || '').match(/\d+/);
-    if (!m) return false;
-    return parseInt(m[0], 10) >= 3;
-  }
-  var curSac = countWhere(cur, COL.sac, isHighSac);
-  var lmSac  = countWhere(lm,  COL.sac, isHighSac);
-  var lySac  = countWhere(ly,  COL.sac, isHighSac);
-
-  // 重新插管（非空、非否、非無）
-  function isReintub(v) {
-    var s = String(v || '').trim();
-    if (!s) return false;
-    if (/^(否|無|n|no|0|false)$/i.test(s)) return false;
-    return true;
-  }
-  var curRe = countWhere(cur, '重新插管', isReintub);
-  var lmRe  = countWhere(lm,  '重新插管', isReintub);
-  var lyRe  = countWhere(ly,  '重新插管', isReintub);
-
-  // 嚴重程度：警訊 / 嚴重
-  function isSevere(v) {
-    var s = String(v || '');
-    return /警訊|嚴重|重大/.test(s);
-  }
-  var curSv = countWhere(cur, COL.severity, isSevere);
-  var lmSv  = countWhere(lm,  COL.severity, isSevere);
-  var lySv  = countWhere(ly,  COL.severity, isSevere);
-
   var cards = [
-    { label: '總事件數', value: curN, lm: lmN, ly: lyN },
-    { label: '高 SAC 級 (≥3)', value: curSac, lm: lmSac, ly: lySac },
-    { label: '嚴重 / 警訊事件', value: curSv, lm: lmSv, ly: lySv },
-    { label: '重新插管', value: curRe, lm: lmRe, ly: lyRe }
+    { label: '總事件數', v: cur.length, lm: lm.length, ly: ly.length },
+    { label: '死亡事件', v: countWhere(cur,COL.severity,isDeath), lm: countWhere(lm,COL.severity,isDeath), ly: countWhere(ly,COL.severity,isDeath) },
+    { label: '嚴重/警訊', v: countWhere(cur,COL.severity,isSevere), lm: countWhere(lm,COL.severity,isSevere), ly: countWhere(ly,COL.severity,isSevere) },
+    { label: '跡近錯失', v: countWhere(cur,COL.severity,isNearMiss), lm: countWhere(lm,COL.severity,isNearMiss), ly: countWhere(ly,COL.severity,isNearMiss) },
+    { label: '高 SAC (≥3)', v: countWhere(cur,COL.sac,isHighSac), lm: countWhere(lm,COL.sac,isHighSac), ly: countWhere(ly,COL.sac,isHighSac) },
+    { label: '重新插管', v: countWhere(cur,COL.reintub,isReintub), lm: countWhere(lm,COL.reintub,isReintub), ly: countWhere(ly,COL.reintub,isReintub) }
   ];
-
-  var html = cards.map(function (c) {
+  $('kpi-grid').innerHTML = cards.map(function (c) {
     return '<div class="card kpi">' +
       '<div class="label">' + c.label + '</div>' +
-      '<div class="value">' + c.value + '</div>' +
+      '<div class="value">' + c.v + '</div>' +
       '<div class="deltas">' +
-        '<div class="delta"><span class="k">vs 上月同期</span>' + deltaBadge(c.value, c.lm) + '</div>' +
-        '<div class="delta"><span class="k">vs 去年同期</span>' + deltaBadge(c.value, c.ly) + '</div>' +
+        '<div class="delta"><span class="k">vs 上月同期</span>' + deltaBadge(c.v, c.lm) + '</div>' +
+        '<div class="delta"><span class="k">vs 去年同期</span>' + deltaBadge(c.v, c.ly) + '</div>' +
       '</div>' +
     '</div>';
   }).join('');
-  $('kpi-grid').innerHTML = html;
 }
 
-// ====== Chart 通用工具 ======
-function destroyChart(id) {
-  if (CHARTS[id]) { CHARTS[id].destroy(); CHARTS[id] = null; }
-}
-
-var PALETTE = [
-  '#2563eb', '#16a34a', '#dc2626', '#f59e0b', '#7c3aed',
-  '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4b5563',
-  '#0ea5e9', '#84cc16', '#f43f5e', '#a855f7', '#14b8a6'
-];
-
-function groupCount(rows, key) {
-  var out = {};
-  rows.forEach(function (r) {
-    var v = (r[key] || '').trim() || '(未填)';
-    out[v] = (out[v] || 0) + 1;
-  });
-  return out;
-}
-
+// ====== Chart utilities ======
+function destroyChart(id) { if (CHARTS[id]) { CHARTS[id].destroy(); CHARTS[id] = null; } }
+var PALETTE = ['#2563eb','#16a34a','#dc2626','#f59e0b','#7c3aed','#0891b2','#db2777','#65a30d','#ea580c','#4b5563','#0ea5e9','#84cc16','#f43f5e','#a855f7','#14b8a6'];
+function groupCount(rows, key) { var out={}; rows.forEach(function(r){ var v=(String(r[key]||'').trim())||'(未填)'; out[v]=(out[v]||0)+1; }); return out; }
 function sortedEntries(obj, topN) {
-  var arr = Object.keys(obj).map(function (k) { return { k: k, v: obj[k] }; });
-  arr.sort(function (a, b) { return b.v - a.v; });
+  var arr = Object.keys(obj).map(function(k){ return {k:k, v:obj[k]}; }).sort(function(a,b){ return b.v-a.v; });
   if (topN && arr.length > topN) arr = arr.slice(0, topN);
   return arr;
 }
 
-// ====== 趨勢：按本期長度決定用日 or 月當單位 ======
 function renderTrend(cur, lm, ly, start, end) {
   var days = Math.round((end - start) / 86400000) + 1;
-  var useMonthly = days > 62;  // 超過 62 天改月為單位
-
-  var buckets = [];            // [{label, startOffsetDays, endOffsetDays}]
+  var useMonthly = days > 62;
+  var buckets = [];
   if (useMonthly) {
-    // 本期跨越的月份
     var cursor = new Date(start.getFullYear(), start.getMonth(), 1);
     while (cursor <= end) {
-      var ns = new Date(cursor.getTime());
-      var ne = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
-      if (ne > end) ne = end;
-      if (ns < start) ns = start;
-      buckets.push({
-        label: cursor.getFullYear() + '/' + String(cursor.getMonth() + 1).padStart(2, '0'),
-        s: ns, e: ne
-      });
-      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+      var ns = cursor < start ? new Date(start) : new Date(cursor);
+      var nle = new Date(cursor.getFullYear(), cursor.getMonth()+1, 0);
+      var ne = nle > end ? new Date(end) : nle;
+      buckets.push({ label: cursor.getFullYear()+'/'+String(cursor.getMonth()+1).padStart(2,'0'), s:ns, e:ne });
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, 1);
     }
   } else {
     for (var i = 0; i < days; i++) {
@@ -633,111 +617,332 @@ function renderTrend(cur, lm, ly, start, end) {
       buckets.push({ label: fmtDate(d).slice(5), s: d, e: d });
     }
   }
-
-  function bucketCount(rows, bs, be) {
-    var n = 0;
-    rows.forEach(function (r) {
-      var d = parseDate(r[COL.date]);
-      if (!d) return;
-      if (d >= bs && d <= be) n++;
-    });
-    return n;
-  }
-
-  var curSeries = [];
-  var lmSeries = [];
-  var lySeries = [];
+  function bc(rows, bs, be) { var n=0; rows.forEach(function(r){ var d=parseDate(r[COL.date]); if(d&&d>=bs&&d<=be) n++; }); return n; }
+  var cs=[], ls=[], ys=[];
   buckets.forEach(function (b) {
-    curSeries.push(bucketCount(cur, b.s, b.e));
-    var lmS = shiftMonths(b.s, -1), lmE = shiftMonths(b.e, -1);
-    lmSeries.push(bucketCount(lm, lmS, lmE));
-    var lyS = shiftYears(b.s, -1), lyE = shiftYears(b.e, -1);
-    lySeries.push(bucketCount(ly, lyS, lyE));
+    cs.push(bc(cur, b.s, b.e));
+    ls.push(bc(lm, shiftMonths(b.s,-1), shiftMonths(b.e,-1)));
+    ys.push(bc(ly, shiftYears(b.s,-1),  shiftYears(b.e,-1)));
   });
-
   destroyChart('trend');
   CHARTS.trend = new Chart($('chart-trend'), {
     type: 'line',
     data: {
-      labels: buckets.map(function (b) { return b.label; }),
+      labels: buckets.map(function(b){return b.label;}),
       datasets: [
-        { label: '本期', data: curSeries, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,.1)', tension: .3, fill: false, pointRadius: 3 },
-        { label: '上月同期', data: lmSeries, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,.1)', borderDash: [6,4], tension: .3, fill: false, pointRadius: 2 },
-        { label: '去年同期', data: lySeries, borderColor: '#9ca3af', backgroundColor: 'rgba(156,163,175,.1)', borderDash: [2,3], tension: .3, fill: false, pointRadius: 2 }
+        { label:'本期', data:cs, borderColor:'#2563eb', backgroundColor:'rgba(37,99,235,.1)', tension:.3, fill:false, pointRadius:3 },
+        { label:'上月同期', data:ls, borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,.1)', borderDash:[6,4], tension:.3, fill:false, pointRadius:2 },
+        { label:'去年同期', data:ys, borderColor:'#9ca3af', backgroundColor:'rgba(156,163,175,.1)', borderDash:[2,3], tension:.3, fill:false, pointRadius:2 }
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
-      plugins: { legend: { position: 'top' } }
+      interaction: { mode:'index', intersect:false },
+      scales: { y: { beginAtZero:true, ticks:{precision:0} } },
+      plugins: { legend:{ position:'top' } }
     }
   });
 }
 
-function renderCategory(cur) {
-  var g = groupCount(cur, COL.category);
-  var arr = sortedEntries(g);
+function renderCategoryChart(cur) {
+  var arr = sortedEntries(groupCount(cur, COL.category));
   destroyChart('category');
   CHARTS.category = new Chart($('chart-category'), {
     type: 'doughnut',
-    data: {
-      labels: arr.map(function (x) { return x.k; }),
-      datasets: [{ data: arr.map(function (x) { return x.v; }), backgroundColor: PALETTE }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'right' } }
-    }
+    data: { labels: arr.map(function(x){return x.k;}), datasets: [{ data: arr.map(function(x){return x.v;}), backgroundColor: PALETTE }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'right' } } }
   });
 }
 
-function renderBar(canvasId, chartKey, arr, color, horizontal) {
-  destroyChart(chartKey);
-  CHARTS[chartKey] = new Chart($(canvasId), {
+function renderWillingness(cur) {
+  var arr = sortedEntries(groupCount(cur, COL.willingness));
+  destroyChart('willingness');
+  CHARTS.willingness = new Chart($('chart-willingness'), {
     type: 'bar',
-    data: {
-      labels: arr.map(function (x) { return x.k; }),
-      datasets: [{ label: '次數', data: arr.map(function (x) { return x.v; }), backgroundColor: color }]
-    },
+    data: { labels: arr.map(function(x){return x.k;}), datasets: [{ label:'件數', data: arr.map(function(x){return x.v;}), backgroundColor:'#0ea5e9' }] },
+    options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', scales:{ x:{beginAtZero:true, ticks:{precision:0}} }, plugins:{ legend:{display:false} } }
+  });
+}
+
+function renderBar(canvasId, key, arr, color, horiz) {
+  destroyChart(key);
+  CHARTS[key] = new Chart($(canvasId), {
+    type: 'bar',
+    data: { labels: arr.map(function(x){return x.k;}), datasets: [{ label:'次數', data: arr.map(function(x){return x.v;}), backgroundColor: color }] },
     options: {
-      responsive: true, maintainAspectRatio: false,
-      indexAxis: horizontal ? 'y' : 'x',
-      scales: {
-        x: { beginAtZero: true, ticks: { precision: 0 } },
-        y: { beginAtZero: true, ticks: { precision: 0 } }
-      },
-      plugins: { legend: { display: false } }
+      responsive:true, maintainAspectRatio:false, indexAxis: horiz?'y':'x',
+      scales: { x:{beginAtZero:true, ticks:{precision:0}}, y:{beginAtZero:true, ticks:{precision:0}} },
+      plugins: { legend:{display:false} }
     }
   });
 }
 
-function renderStage(cur) {
-  renderBar('chart-stage', 'stage', sortedEntries(groupCount(cur, COL.stage)), '#16a34a', true);
+// ====== Heatmap helpers ======
+function heatColor(v, max) {
+  if (!v || !max) return '#ffffff';
+  var t = Math.min(1, v / max);
+  // 白 → 藍
+  var r = Math.round(255 - (255 - 30) * t);
+  var g = Math.round(255 - (255 - 100) * t);
+  var b = Math.round(255 - (255 - 200) * t);
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
 }
-function renderCause(cur) {
-  renderBar('chart-cause', 'cause', sortedEntries(groupCount(cur, COL.cause), 10), '#dc2626', true);
-}
-function renderSac(cur) {
-  var arr = sortedEntries(groupCount(cur, COL.sac));
-  // 依 SAC 等級排序
-  arr.sort(function (a, b) {
-    var ai = parseInt((a.k.match(/\d+/) || [99])[0], 10);
-    var bi = parseInt((b.k.match(/\d+/) || [99])[0], 10);
-    return ai - bi;
+
+// 建立交叉表 {row: {col: count}}
+function crossTab(rows, rowKey, colKey) {
+  var out = {};
+  rows.forEach(function (r) {
+    var rk = String(r[rowKey]||'').trim() || '(未填)';
+    var ck = String(r[colKey]||'').trim() || '(未填)';
+    if (!out[rk]) out[rk] = {};
+    out[rk][ck] = (out[rk][ck]||0) + 1;
   });
-  renderBar('chart-sac', 'sac', arr, '#7c3aed', false);
+  return out;
 }
-function renderSeverity(cur) {
-  renderBar('chart-severity', 'severity', sortedEntries(groupCount(cur, COL.severity)), '#f59e0b', false);
+
+// 以固定序 + 資料中存在的其他值，產生「存在的」欄 / 列
+function extractKeysWithPreferred(tab, axis, preferred) {
+  var present = {};
+  if (axis === 'row') {
+    Object.keys(tab).forEach(function (k) { present[k] = true; });
+  } else {
+    Object.keys(tab).forEach(function (rk) {
+      Object.keys(tab[rk]).forEach(function (ck) { present[ck] = true; });
+    });
+  }
+  var out = [];
+  preferred.forEach(function (k) { if (present[k]) { out.push(k); delete present[k]; } });
+  // 剩餘的用字串排序
+  Object.keys(present).sort().forEach(function (k) { out.push(k); });
+  return out;
 }
-function renderUnit(cur) {
-  renderBar('chart-unit', 'unit', sortedEntries(groupCount(cur, COL.unit), 10), '#0891b2', true);
+
+function renderCrossTable(containerId, tab, rowKeys, colKeys, title) {
+  var colTotals = {}, rowTotals = {}, gTotal = 0, maxCell = 0;
+  rowKeys.forEach(function (rk) {
+    rowTotals[rk] = 0;
+    colKeys.forEach(function (ck) {
+      var v = (tab[rk] && tab[rk][ck]) || 0;
+      rowTotals[rk] += v;
+      colTotals[ck] = (colTotals[ck]||0) + v;
+      gTotal += v;
+      if (v > maxCell) maxCell = v;
+    });
+  });
+  var html = '<table class="cross"><thead><tr><th style="min-width:110px">' + (title||'') + '</th>';
+  colKeys.forEach(function (ck) { html += '<th>' + escapeHtml(ck) + '</th>'; });
+  html += '<th>列計</th></tr></thead><tbody>';
+  rowKeys.forEach(function (rk) {
+    html += '<tr><td class="rowh">' + escapeHtml(rk) + '</td>';
+    colKeys.forEach(function (ck) {
+      var v = (tab[rk] && tab[rk][ck]) || 0;
+      var bg = heatColor(v, maxCell);
+      var txtColor = v && (v/maxCell > 0.5) ? '#fff' : '#1f2937';
+      html += '<td class="num" style="background:' + bg + ';color:' + txtColor + '">' + (v||'') + '</td>';
+    });
+    html += '<td class="num total">' + rowTotals[rk] + '</td></tr>';
+  });
+  html += '<tr><td class="rowh">欄計件數</td>';
+  colKeys.forEach(function (ck) { html += '<td class="num total">' + (colTotals[ck]||0) + '</td>'; });
+  html += '<td class="num total">' + gTotal + '</td></tr>';
+  html += '</tbody></table>';
+  $(containerId).innerHTML = html;
+  return { colTotals: colTotals, rowTotals: rowTotals, gTotal: gTotal, maxCell: maxCell };
+}
+
+// ====== SAC 決策矩陣 ======
+function renderSacMatrix(cur, targetId) {
+  var tab = crossTab(cur, COL.freq, COL.severity);
+  var rows = extractKeysWithPreferred(tab, 'row', SAC_FREQ_ORDER);
+  var cols = extractKeysWithPreferred(tab, 'col', SAC_SEVERITY_ORDER);
+  renderCrossTable(targetId, tab, rows, cols, '發生頻率 \\ 嚴重程度');
+}
+
+// ====== 單位 × 事件類別 ======
+function renderUnitCatMatrix(cur, targetId) {
+  var tab = crossTab(cur, COL.unit, COL.category);
+  var rows = extractKeysWithPreferred(tab, 'row', []); // 單位按字串排序
+  var cols = extractKeysWithPreferred(tab, 'col', REPORT_CATEGORIES);
+  renderCrossTable(targetId, tab, rows, cols, '單位 \\ 事件類別');
+}
+
+// ====== 管路專區 ======
+function getTubeRows(rows) {
+  return rows.filter(function (r) { return /管路/.test(String(r[COL.category]||'')); });
+}
+
+function renderTubeSection(cur) {
+  var tubeRows = getTubeRows(cur);
+  if (tubeRows.length === 0) {
+    $('tube-matrix').innerHTML = '<div class="empty">本期無管路事件</div>';
+    $('tube-stats').innerHTML = '';
+    return;
+  }
+  var tab = crossTab(tubeRows, COL.tube, COL.cause);
+  var rows = extractKeysWithPreferred(tab, 'row', TUBE_TYPES);
+  var cols = extractKeysWithPreferred(tab, 'col', TUBE_ABNORMAL);
+  renderCrossTable('tube-matrix', tab, rows, cols, '管路種類 \\ 異常類別');
+
+  // 約束中自拔
+  var selfPull = tubeRows.filter(function (r) { return /自拔/.test(String(r[COL.cause]||'')); });
+  var restrained = selfPull.filter(function (r) {
+    var v = String(r[COL.restraint]||'').trim();
+    return v && !/^(否|無|n|no|0|false|未|未約束)$/i.test(v);
+  });
+  $('tube-stats').innerHTML =
+    '<strong>管路事件總數：</strong>' + tubeRows.length + ' 件 · ' +
+    '<strong>自拔：</strong>' + selfPull.length + ' 件 · ' +
+    '<strong>約束中仍自拔：</strong>' + restrained.length + ' 件';
+}
+
+// ====== 通報者 × 事件類別（堆疊長條） ======
+function renderReporterCatChart(cur) {
+  var tab = crossTab(cur, COL.reporter, COL.category);
+  var reporters = Object.keys(tab);
+  // 取本期實際出現的類別
+  var catSet = {};
+  reporters.forEach(function (rk) { Object.keys(tab[rk]).forEach(function(ck){ catSet[ck] = true; }); });
+  var cats = Object.keys(catSet);
+  // 排序：本期各類別總量大的在前
+  var catTotals = cats.map(function(c){ var t=0; reporters.forEach(function(r){ t += (tab[r][c]||0); }); return {c:c, t:t}; }).sort(function(a,b){return b.t-a.t;});
+  cats = catTotals.map(function(x){return x.c;});
+
+  var datasets = cats.map(function (c, i) {
+    return {
+      label: c,
+      data: reporters.map(function (r) { return tab[r][c] || 0; }),
+      backgroundColor: PALETTE[i % PALETTE.length]
+    };
+  });
+  destroyChart('reporterCat');
+  CHARTS.reporterCat = new Chart($('chart-reporter-cat'), {
+    type: 'bar',
+    data: { labels: reporters, datasets: datasets },
+    options: {
+      responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      scales: {
+        x: { beginAtZero:true, stacked:true, ticks:{precision:0} },
+        y: { stacked:true }
+      },
+      plugins: { legend:{ position:'bottom' } }
+    }
+  });
+}
+
+// ====== 月報模式 ======
+function enterReportMode() {
+  document.body.classList.add('report-mode');
+  document.querySelectorAll('.toolbar .btn').forEach(function (b) {
+    if (!b.classList.contains('back')) b.style.display = 'none';
+  });
+  document.querySelectorAll('.toolbar .back').forEach(function (b) { b.style.display = ''; });
+  buildReportPage();
+}
+
+function exitReportMode() {
+  document.body.classList.remove('report-mode');
+  document.querySelectorAll('.toolbar .btn').forEach(function (b) {
+    if (!b.classList.contains('back')) b.style.display = '';
+  });
+  document.querySelectorAll('.toolbar .back').forEach(function (b) { b.style.display = 'none'; });
+}
+
+function buildReportPage() {
+  var f = getFilters();
+  if (!f.start || !f.end) return;
+  var cur = filterRows(RAW, f.start, f.end);
+  var lm  = filterRows(RAW, shiftMonths(f.start,-1), shiftMonths(f.end,-1));
+  var ly  = filterRows(RAW, shiftYears(f.start,-1),  shiftYears(f.end,-1));
+
+  // 標題
+  var y = f.start.getFullYear(), m = f.start.getMonth() + 1;
+  var roc = y - 1911;
+  $('rep-title').textContent = roc + ' 年 ' + String(m).padStart(2,'0') + ' 月 病人安全事件通報 月統計表';
+  $('rep-period').textContent = '期間：' + fmtDate(f.start) + ' ~ ' + fmtDate(f.end) + '（共 ' + cur.length + ' 件）';
+
+  // 一、SAC 決策矩陣
+  renderSacMatrix(cur, 'rep-sac-matrix');
+
+  // 二、SAC 等級別統計
+  var sacCounts = {};
+  cur.forEach(function (r) {
+    var v = String(r[COL.sac]||'').trim();
+    var m2 = v.match(/\d+/);
+    var k = m2 ? (m2[0]+'級') : (v || '(未填)');
+    sacCounts[k] = (sacCounts[k]||0) + 1;
+  });
+  var sacHtml = '<table class="cross"><thead><tr>';
+  var order = ['1級','2級','3級','4級','5級'];
+  order.forEach(function (k) { sacHtml += '<th>' + k + '</th>'; });
+  sacHtml += '<th>列計</th></tr></thead><tbody><tr>';
+  order.forEach(function (k) { sacHtml += '<td class="num">' + (sacCounts[k]||0) + '</td>'; });
+  sacHtml += '<td class="num total">' + cur.length + '</td></tr></tbody></table>';
+  $('rep-sac-level').innerHTML = sacHtml;
+
+  // 三、單位 × 類別
+  renderUnitCatMatrix(cur, 'rep-unit-cat');
+
+  // 四、事件分類佔率
+  var catG = groupCount(cur, COL.category);
+  var catArr = sortedEntries(catG);
+  var total = cur.length;
+  var pctHtml = '<table class="cross"><thead><tr><th>事件類別</th><th>件數</th><th>佔率</th></tr></thead><tbody>';
+  catArr.forEach(function (x) {
+    var pct = total > 0 ? Math.round((x.v / total) * 1000) / 10 : 0;
+    pctHtml += '<tr><td class="rowh">' + escapeHtml(x.k) + '</td><td class="num">' + x.v + '</td><td class="num">' + pct + '%</td></tr>';
+  });
+  pctHtml += '<tr><td class="rowh">合計</td><td class="num total">' + total + '</td><td class="num total">100%</td></tr></tbody></table>';
+  $('rep-cat-pct').innerHTML = pctHtml;
+
+  // 五、通報意願
+  var willG = groupCount(cur, COL.willingness);
+  var willArr = sortedEntries(willG);
+  var willHtml = '<table class="cross"><thead><tr><th>通報意願</th><th>件數</th><th>佔率</th></tr></thead><tbody>';
+  willArr.forEach(function (x) {
+    var pct = total > 0 ? Math.round((x.v / total) * 1000) / 10 : 0;
+    willHtml += '<tr><td class="rowh">' + escapeHtml(x.k) + '</td><td class="num">' + x.v + '</td><td class="num">' + pct + '%</td></tr>';
+  });
+  willHtml += '</tbody></table>';
+  $('rep-willingness').innerHTML = willHtml;
+
+  // 六、通報者 × 類別
+  var tab = crossTab(cur, COL.reporter, COL.category);
+  var rowKs = extractKeysWithPreferred(tab, 'row', []);
+  var colKs = extractKeysWithPreferred(tab, 'col', REPORT_CATEGORIES);
+  renderCrossTable('rep-reporter-cat', tab, rowKs, colKs, '通報者 \\ 類別');
+
+  // 七、管路事件
+  var tubeRows = getTubeRows(cur);
+  if (tubeRows.length === 0) {
+    $('rep-tube-section').style.display = 'none';
+  } else {
+    $('rep-tube-section').style.display = '';
+    var tTab = crossTab(tubeRows, COL.tube, COL.cause);
+    var tRowKs = extractKeysWithPreferred(tTab, 'row', TUBE_TYPES);
+    var tColKs = extractKeysWithPreferred(tTab, 'col', TUBE_ABNORMAL);
+    renderCrossTable('rep-tube', tTab, tRowKs, tColKs, '管路種類 \\ 異常類別');
+    var selfPull = tubeRows.filter(function(r){ return /自拔/.test(String(r[COL.cause]||'')); });
+    var restrained = selfPull.filter(function(r){ var v=String(r[COL.restraint]||'').trim(); return v && !/^(否|無|n|no|0|false|未|未約束)$/i.test(v); });
+    $('rep-tube').insertAdjacentHTML('beforeend',
+      '<p>管路事件共 <b>' + tubeRows.length + '</b> 件；自拔 <b>' + selfPull.length + '</b> 件，其中約束中仍自拔 <b>' + restrained.length + '</b> 件。</p>');
+  }
+
+  // 八、比較
+  var cmpHtml = '<table class="cross"><thead><tr><th>指標</th><th>本期</th><th>上月同期</th><th>去年同期</th></tr></thead><tbody>';
+  cmpHtml += '<tr><td class="rowh">總事件數</td><td class="num">' + cur.length + '</td><td class="num">' + lm.length + '</td><td class="num">' + ly.length + '</td></tr>';
+  var curS = countWhere(cur,COL.severity,isSevere), lmS = countWhere(lm,COL.severity,isSevere), lyS = countWhere(ly,COL.severity,isSevere);
+  cmpHtml += '<tr><td class="rowh">嚴重/警訊</td><td class="num">' + curS + '</td><td class="num">' + lmS + '</td><td class="num">' + lyS + '</td></tr>';
+  var curD = countWhere(cur,COL.severity,isDeath), lmD = countWhere(lm,COL.severity,isDeath), lyD = countWhere(ly,COL.severity,isDeath);
+  cmpHtml += '<tr><td class="rowh">死亡</td><td class="num">' + curD + '</td><td class="num">' + lmD + '</td><td class="num">' + lyD + '</td></tr>';
+  var curT = getTubeRows(cur).length, lmT = getTubeRows(lm).length, lyT = getTubeRows(ly).length;
+  cmpHtml += '<tr><td class="rowh">管路事件</td><td class="num">' + curT + '</td><td class="num">' + lmT + '</td><td class="num">' + lyT + '</td></tr>';
+  cmpHtml += '</tbody></table>';
+  $('rep-compare').innerHTML = cmpHtml;
 }
 
 // ====== 啟動 ======
 document.addEventListener('DOMContentLoaded', function () {
-  initDateRange();
+  applyPreset('thisMonth');   // 先設預設日期範圍
   reloadData();
 });
 </script>
