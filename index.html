@@ -204,11 +204,6 @@
       <div class="heat-wrap" id="sac-matrix"></div>
     </div>
 
-    <div class="card chart-card c-full">
-      <h3>單位別 × 事件分類</h3>
-      <div class="heat-wrap" id="unit-cat-matrix"></div>
-    </div>
-
     <div class="card chart-card c-full" id="tube-section">
       <h3>管路專區（管路種類 × 異常類別）</h3>
       <div class="heat-wrap" id="tube-matrix"></div>
@@ -590,7 +585,6 @@ function refresh() {
   renderCategoryChart(cur);
   renderWillingness(cur);
   renderSacMatrix(cur, 'sac-matrix');
-  renderUnitCatMatrix(cur, 'unit-cat-matrix');
   renderTubeSection(cur);
   renderReporterCatChart(cur);
   renderBar('chart-stage', 'stage', sortedEntries(groupCount(cur, COL.stage)), '#16a34a', true);
@@ -629,12 +623,7 @@ function isReintub(v) { var s=String(v||'').trim(); if(!s) return false; return 
 
 function renderKPIs(cur, lm, ly) {
   var cards = [
-    { label: '總事件數', v: cur.length, lm: lm.length, ly: ly.length },
-    { label: '死亡事件', v: countWhere(cur,COL.severity,isDeath), lm: countWhere(lm,COL.severity,isDeath), ly: countWhere(ly,COL.severity,isDeath) },
-    { label: '嚴重/警訊', v: countWhere(cur,COL.severity,isSevere), lm: countWhere(lm,COL.severity,isSevere), ly: countWhere(ly,COL.severity,isSevere) },
-    { label: '跡近錯失', v: countWhere(cur,COL.severity,isNearMiss), lm: countWhere(lm,COL.severity,isNearMiss), ly: countWhere(ly,COL.severity,isNearMiss) },
-    { label: '高 SAC (≥3)', v: countWhere(cur,COL.sac,isHighSac), lm: countWhere(lm,COL.sac,isHighSac), ly: countWhere(ly,COL.sac,isHighSac) },
-    { label: '重新插管', v: countWhere(cur,COL.reintub,isReintub), lm: countWhere(lm,COL.reintub,isReintub), ly: countWhere(ly,COL.reintub,isReintub) }
+    { label: '總事件數', v: cur.length, lm: lm.length, ly: ly.length }
   ];
   // SAC 1 ~ SAC 5 各自分級
   for (var lv = 1; lv <= 5; lv++) {
