@@ -74,6 +74,16 @@
   table.cross td.total { background: #eff6ff; font-weight: 700; color: #1e3a8a; }
   .heat-wrap { overflow-x: auto; }
 
+  /* Period compare blocks */
+  .period-block { margin-bottom: 18px; }
+  .period-block:last-child { margin-bottom: 0; }
+  .period-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .period-pill { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; color: #fff; }
+  .pill-cur { background: #2563eb; }
+  .pill-lm  { background: #f59e0b; }
+  .pill-ly  { background: #6b7280; }
+  .period-range { font-size: 13px; color: #6b7280; }
+
   .empty { text-align: center; color: #9ca3af; padding: 30px; font-size: 14px; }
   .loading { text-align: center; color: #2563eb; padding: 12px; font-size: 14px; }
   .error { text-align: center; color: #dc2626; padding: 20px; font-size: 14px; background: #fef2f2; border-radius: 8px; }
@@ -155,8 +165,30 @@
 
   <div class="chart-grid">
     <div class="card chart-card c-full">
-      <h3>事件趨勢（本期 vs 上月同期 vs 去年同期）</h3>
-      <div class="chart-box tall"><canvas id="chart-trend"></canvas></div>
+      <h3>事件類別 × 單位 件數統計（含上月、去年同期比較）</h3>
+      <div id="period-compare">
+        <div class="period-block">
+          <div class="period-head">
+            <span class="period-pill pill-cur">本期</span>
+            <span class="period-range" id="pc-cur-range"></span>
+          </div>
+          <div class="heat-wrap" id="pc-cur"></div>
+        </div>
+        <div class="period-block">
+          <div class="period-head">
+            <span class="period-pill pill-lm">上月同期</span>
+            <span class="period-range" id="pc-lm-range"></span>
+          </div>
+          <div class="heat-wrap" id="pc-lm"></div>
+        </div>
+        <div class="period-block">
+          <div class="period-head">
+            <span class="period-pill pill-ly">去年同期</span>
+            <span class="period-range" id="pc-ly-range"></span>
+          </div>
+          <div class="heat-wrap" id="pc-ly"></div>
+        </div>
+      </div>
     </div>
 
     <div class="card chart-card c-half">
@@ -532,7 +564,7 @@ function refresh() {
   var ly = filterRows(RAW, lyR.s, lyR.e);
 
   renderKPIs(cur, lm, ly);
-  renderTrend(cur, lm, ly, f.start, f.end);
+  renderPeriodCompare(cur, lm, ly, f);
   renderCategoryChart(cur);
   renderWillingness(cur);
   renderSacMatrix(cur, 'sac-matrix');
@@ -598,50 +630,42 @@ function sortedEntries(obj, topN) {
   return arr;
 }
 
-function renderTrend(cur, lm, ly, start, end) {
-  var days = Math.round((end - start) / 86400000) + 1;
-  var useMonthly = days > 62;
-  var buckets = [];
-  if (useMonthly) {
-    var cursor = new Date(start.getFullYear(), start.getMonth(), 1);
-    while (cursor <= end) {
-      var ns = cursor < start ? new Date(start) : new Date(cursor);
-      var nle = new Date(cursor.getFullYear(), cursor.getMonth()+1, 0);
-      var ne = nle > end ? new Date(end) : nle;
-      buckets.push({ label: cursor.getFullYear()+'/'+String(cursor.getMonth()+1).padStart(2,'0'), s:ns, e:ne });
-      cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, 1);
-    }
-  } else {
-    for (var i = 0; i < days; i++) {
-      var d = addDays(start, i);
-      buckets.push({ label: fmtDate(d).slice(5), s: d, e: d });
-    }
+function renderPeriodCompare(cur, lm, ly, f) {
+  var lmR = { s: shiftMonths(f.start, -1), e: shiftMonths(f.end, -1) };
+  var lyR = { s: shiftYears(f.start, -1),  e: shiftYears(f.end, -1) };
+
+  $('pc-cur-range').textContent = fmtDate(f.start) + ' ~ ' + fmtDate(f.end) + '（共 ' + cur.length + ' 件）';
+  $('pc-lm-range').textContent  = fmtDate(lmR.s) + ' ~ ' + fmtDate(lmR.e)  + '（共 ' + lm.length + ' 件）';
+  $('pc-ly-range').textContent  = fmtDate(lyR.s) + ' ~ ' + fmtDate(lyR.e)  + '（共 ' + ly.length + ' 件）';
+
+  // 三期統一欄位（單位）與列（事件類別）
+  var unitSet = {}, catSet = {};
+  [cur, lm, ly].forEach(function (rows) {
+    rows.forEach(function (r) {
+      var u = String(r[COL.unit]||'').trim();
+      var c = String(r[COL.category]||'').trim();
+      if (u) unitSet[u] = true;
+      if (c) catSet[c] = true;
+    });
+  });
+  // 列：PDF 13 類優先，再加上實際存在但不在固定清單的類別
+  var rowKeys = REPORT_CATEGORIES.filter(function(c){ return catSet[c]; });
+  Object.keys(catSet).forEach(function(c){ if (REPORT_CATEGORIES.indexOf(c) === -1) rowKeys.push(c); });
+  // 欄：所有單位按名稱排序
+  var colKeys = Object.keys(unitSet).sort();
+
+  renderCatUnitTable(cur, rowKeys, colKeys, 'pc-cur');
+  renderCatUnitTable(lm,  rowKeys, colKeys, 'pc-lm');
+  renderCatUnitTable(ly,  rowKeys, colKeys, 'pc-ly');
+}
+
+function renderCatUnitTable(rows, rowKeys, colKeys, targetId) {
+  var tab = crossTab(rows, COL.category, COL.unit);
+  if (rowKeys.length === 0 || colKeys.length === 0) {
+    $(targetId).innerHTML = '<div class="empty">無資料</div>';
+    return;
   }
-  function bc(rows, bs, be) { var n=0; rows.forEach(function(r){ var d=parseDate(r[COL.date]); if(d&&d>=bs&&d<=be) n++; }); return n; }
-  var cs=[], ls=[], ys=[];
-  buckets.forEach(function (b) {
-    cs.push(bc(cur, b.s, b.e));
-    ls.push(bc(lm, shiftMonths(b.s,-1), shiftMonths(b.e,-1)));
-    ys.push(bc(ly, shiftYears(b.s,-1),  shiftYears(b.e,-1)));
-  });
-  destroyChart('trend');
-  CHARTS.trend = new Chart($('chart-trend'), {
-    type: 'line',
-    data: {
-      labels: buckets.map(function(b){return b.label;}),
-      datasets: [
-        { label:'本期', data:cs, borderColor:'#2563eb', backgroundColor:'rgba(37,99,235,.1)', tension:.3, fill:false, pointRadius:3 },
-        { label:'上月同期', data:ls, borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,.1)', borderDash:[6,4], tension:.3, fill:false, pointRadius:2 },
-        { label:'去年同期', data:ys, borderColor:'#9ca3af', backgroundColor:'rgba(156,163,175,.1)', borderDash:[2,3], tension:.3, fill:false, pointRadius:2 }
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode:'index', intersect:false },
-      scales: { y: { beginAtZero:true, ticks:{precision:0} } },
-      plugins: { legend:{ position:'top' } }
-    }
-  });
+  renderCrossTable(targetId, tab, rowKeys, colKeys, '事件類別 \\ 單位');
 }
 
 function renderCategoryChart(cur) {
