@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>病人安全事件通報儀表板</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -83,6 +84,21 @@
   .pill-lm  { background: #f59e0b; }
   .pill-ly  { background: #6b7280; }
   .period-range { font-size: 13px; color: #6b7280; }
+
+  /* 合併三期一張表：單格上顯示本/上/去三個數值 */
+  .pc-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: #374151; margin-bottom: 8px; }
+  .pc-legend .item { display: inline-flex; align-items: center; gap: 6px; }
+  .pc-legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .pc-legend .d-cur { background: #2563eb; }
+  .pc-legend .d-lm  { background: #f59e0b; }
+  .pc-legend .d-ly  { background: #6b7280; }
+
+  table.cross td.cell-multi { padding: 4px 6px; line-height: 1.2; }
+  .cell-cur { font-size: 15px; font-weight: 700; }
+  .cell-cmp { font-size: 10px; color: #6b7280; margin-top: 2px; }
+  .cell-cmp .v-lm { color: #b45309; }
+  .cell-cmp .v-ly { color: #4b5563; }
+  .cell-cmp .sep { color: #d1d5db; margin: 0 3px; }
 
   .empty { text-align: center; color: #9ca3af; padding: 30px; font-size: 14px; }
   .loading { text-align: center; color: #2563eb; padding: 12px; font-size: 14px; }
@@ -165,30 +181,13 @@
 
   <div class="chart-grid">
     <div class="card chart-card c-full">
-      <h3>事件類別 × 單位 件數統計（含上月、去年同期比較）</h3>
-      <div id="period-compare">
-        <div class="period-block">
-          <div class="period-head">
-            <span class="period-pill pill-cur">本期</span>
-            <span class="period-range" id="pc-cur-range"></span>
-          </div>
-          <div class="heat-wrap" id="pc-cur"></div>
-        </div>
-        <div class="period-block">
-          <div class="period-head">
-            <span class="period-pill pill-lm">上月同期</span>
-            <span class="period-range" id="pc-lm-range"></span>
-          </div>
-          <div class="heat-wrap" id="pc-lm"></div>
-        </div>
-        <div class="period-block">
-          <div class="period-head">
-            <span class="period-pill pill-ly">去年同期</span>
-            <span class="period-range" id="pc-ly-range"></span>
-          </div>
-          <div class="heat-wrap" id="pc-ly"></div>
-        </div>
+      <h3>事件類別 × 單位 件數統計（三期合併：本期 / 上月同期 / 去年同期）</h3>
+      <div class="pc-legend">
+        <span class="item"><span class="dot d-cur"></span><b>本期</b><span id="pc-cur-range"></span></span>
+        <span class="item"><span class="dot d-lm"></span>上月同期 <span id="pc-lm-range"></span></span>
+        <span class="item"><span class="dot d-ly"></span>去年同期 <span id="pc-ly-range"></span></span>
       </div>
+      <div class="heat-wrap" id="pc-merged"></div>
     </div>
 
     <div class="card chart-card c-half">
@@ -297,6 +296,11 @@
 </div>
 
 <script>
+// ====== Chart.js 資料標籤全域註冊 ======
+if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined') {
+  Chart.register(ChartDataLabels);
+}
+
 // ====== 設定 ======
 var API_URL = 'https://script.google.com/macros/s/AKfycbweUGwYnhtCwugrG8FvquIO9rwXBZB0MJNfJiSD6g2wGw8a711vimlkzVc1cEZnONn4/exec';
 
@@ -634,9 +638,9 @@ function renderPeriodCompare(cur, lm, ly, f) {
   var lmR = { s: shiftMonths(f.start, -1), e: shiftMonths(f.end, -1) };
   var lyR = { s: shiftYears(f.start, -1),  e: shiftYears(f.end, -1) };
 
-  $('pc-cur-range').textContent = fmtDate(f.start) + ' ~ ' + fmtDate(f.end) + '（共 ' + cur.length + ' 件）';
-  $('pc-lm-range').textContent  = fmtDate(lmR.s) + ' ~ ' + fmtDate(lmR.e)  + '（共 ' + lm.length + ' 件）';
-  $('pc-ly-range').textContent  = fmtDate(lyR.s) + ' ~ ' + fmtDate(lyR.e)  + '（共 ' + ly.length + ' 件）';
+  $('pc-cur-range').textContent = fmtDate(f.start) + ' ~ ' + fmtDate(f.end) + '（' + cur.length + ' 件）';
+  $('pc-lm-range').textContent  = fmtDate(lmR.s) + ' ~ ' + fmtDate(lmR.e)  + '（' + lm.length + ' 件）';
+  $('pc-ly-range').textContent  = fmtDate(lyR.s) + ' ~ ' + fmtDate(lyR.e)  + '（' + ly.length + ' 件）';
 
   // 三期統一欄位（單位）與列（事件類別）
   var unitSet = {}, catSet = {};
@@ -654,18 +658,77 @@ function renderPeriodCompare(cur, lm, ly, f) {
   // 欄：所有單位按名稱排序
   var colKeys = Object.keys(unitSet).sort();
 
-  renderCatUnitTable(cur, rowKeys, colKeys, 'pc-cur');
-  renderCatUnitTable(lm,  rowKeys, colKeys, 'pc-lm');
-  renderCatUnitTable(ly,  rowKeys, colKeys, 'pc-ly');
+  renderMergedPeriodTable(cur, lm, ly, rowKeys, colKeys, 'pc-merged');
 }
 
-function renderCatUnitTable(rows, rowKeys, colKeys, targetId) {
-  var tab = crossTab(rows, COL.category, COL.unit);
+// 將三期資料合併為一張表：每格上方顯示本期數值（主），下方顯示上月/去年
+function renderMergedPeriodTable(cur, lm, ly, rowKeys, colKeys, targetId) {
   if (rowKeys.length === 0 || colKeys.length === 0) {
     $(targetId).innerHTML = '<div class="empty">無資料</div>';
     return;
   }
-  renderCrossTable(targetId, tab, rowKeys, colKeys, '事件類別 \\ 單位');
+  var tabCur = crossTab(cur, COL.category, COL.unit);
+  var tabLm  = crossTab(lm,  COL.category, COL.unit);
+  var tabLy  = crossTab(ly,  COL.category, COL.unit);
+
+  // 以本期為熱區著色依據
+  var maxCell = 0;
+  rowKeys.forEach(function (rk) {
+    colKeys.forEach(function (ck) {
+      var v = (tabCur[rk] && tabCur[rk][ck]) || 0;
+      if (v > maxCell) maxCell = v;
+    });
+  });
+
+  var curRowTot = {}, lmRowTot = {}, lyRowTot = {};
+  var curColTot = {}, lmColTot = {}, lyColTot = {};
+  var curG = 0, lmG = 0, lyG = 0;
+
+  var html = '<table class="cross"><thead><tr><th style="min-width:110px">事件類別 \\ 單位</th>';
+  colKeys.forEach(function (ck) { html += '<th>' + escapeHtml(ck) + '</th>'; });
+  html += '<th>列計</th></tr></thead><tbody>';
+
+  rowKeys.forEach(function (rk) {
+    html += '<tr><td class="rowh">' + escapeHtml(rk) + '</td>';
+    curRowTot[rk] = 0; lmRowTot[rk] = 0; lyRowTot[rk] = 0;
+    colKeys.forEach(function (ck) {
+      var vc = (tabCur[rk] && tabCur[rk][ck]) || 0;
+      var vl = (tabLm[rk]  && tabLm[rk][ck])  || 0;
+      var vy = (tabLy[rk]  && tabLy[rk][ck])  || 0;
+      curRowTot[rk] += vc; lmRowTot[rk] += vl; lyRowTot[rk] += vy;
+      curColTot[ck] = (curColTot[ck]||0) + vc;
+      lmColTot[ck]  = (lmColTot[ck] ||0) + vl;
+      lyColTot[ck]  = (lyColTot[ck] ||0) + vy;
+      curG += vc; lmG += vl; lyG += vy;
+
+      var bg = heatColor(vc, maxCell);
+      var txtColor = vc && (vc/maxCell > 0.5) ? '#fff' : '#1f2937';
+      var tip = '本期: ' + vc + ' / 上月: ' + vl + ' / 去年: ' + vy;
+      html += '<td class="num cell-multi" style="background:' + bg + ';color:' + txtColor + '" title="' + tip + '">' +
+        '<div class="cell-cur">' + (vc || '–') + '</div>' +
+        '<div class="cell-cmp"><span class="v-lm">' + vl + '</span><span class="sep">/</span><span class="v-ly">' + vy + '</span></div>' +
+        '</td>';
+    });
+    html += '<td class="num total cell-multi">' +
+      '<div class="cell-cur">' + curRowTot[rk] + '</div>' +
+      '<div class="cell-cmp"><span class="v-lm">' + lmRowTot[rk] + '</span><span class="sep">/</span><span class="v-ly">' + lyRowTot[rk] + '</span></div>' +
+      '</td></tr>';
+  });
+
+  html += '<tr><td class="rowh">欄計件數</td>';
+  colKeys.forEach(function (ck) {
+    html += '<td class="num total cell-multi">' +
+      '<div class="cell-cur">' + (curColTot[ck]||0) + '</div>' +
+      '<div class="cell-cmp"><span class="v-lm">' + (lmColTot[ck]||0) + '</span><span class="sep">/</span><span class="v-ly">' + (lyColTot[ck]||0) + '</span></div>' +
+      '</td>';
+  });
+  html += '<td class="num total cell-multi">' +
+    '<div class="cell-cur">' + curG + '</div>' +
+    '<div class="cell-cmp"><span class="v-lm">' + lmG + '</span><span class="sep">/</span><span class="v-ly">' + lyG + '</span></div>' +
+    '</td></tr>';
+
+  html += '</tbody></table>';
+  $(targetId).innerHTML = html;
 }
 
 function renderCategoryChart(cur) {
@@ -674,7 +737,25 @@ function renderCategoryChart(cur) {
   CHARTS.category = new Chart($('chart-category'), {
     type: 'doughnut',
     data: { labels: arr.map(function(x){return x.k;}), datasets: [{ data: arr.map(function(x){return x.v;}), backgroundColor: PALETTE }] },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'right' } } }
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: {
+        legend: { position:'right' },
+        datalabels: {
+          color: '#fff',
+          font: { weight: 'bold', size: 11 },
+          textStrokeColor: 'rgba(0,0,0,0.6)',
+          textStrokeWidth: 2,
+          formatter: function (v, ctx) {
+            var total = ctx.chart.data.datasets[0].data.reduce(function(a,b){return a+b;},0);
+            if (!total || !v) return '';
+            var pct = Math.round(v / total * 100);
+            if (pct < 4) return '';
+            return v + ' (' + pct + '%)';
+          }
+        }
+      }
+    }
   });
 }
 
@@ -684,7 +765,18 @@ function renderWillingness(cur) {
   CHARTS.willingness = new Chart($('chart-willingness'), {
     type: 'bar',
     data: { labels: arr.map(function(x){return x.k;}), datasets: [{ label:'件數', data: arr.map(function(x){return x.v;}), backgroundColor:'#0ea5e9' }] },
-    options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', scales:{ x:{beginAtZero:true, ticks:{precision:0}} }, plugins:{ legend:{display:false} } }
+    options: {
+      responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      scales:{ x:{beginAtZero:true, ticks:{precision:0}} },
+      plugins:{
+        legend:{display:false},
+        datalabels: {
+          anchor: 'end', align: 'end', color: '#111827',
+          font: { weight: 'bold', size: 11 },
+          formatter: function (v) { return v ? v : ''; }
+        }
+      }
+    }
   });
 }
 
@@ -695,8 +787,19 @@ function renderBar(canvasId, key, arr, color, horiz) {
     data: { labels: arr.map(function(x){return x.k;}), datasets: [{ label:'次數', data: arr.map(function(x){return x.v;}), backgroundColor: color }] },
     options: {
       responsive:true, maintainAspectRatio:false, indexAxis: horiz?'y':'x',
+      layout: { padding: horiz ? { right: 24 } : { top: 20 } },
       scales: { x:{beginAtZero:true, ticks:{precision:0}}, y:{beginAtZero:true, ticks:{precision:0}} },
-      plugins: { legend:{display:false} }
+      plugins: {
+        legend:{display:false},
+        datalabels: {
+          anchor: 'end',
+          align: 'end',
+          color: '#111827',
+          font: { weight: 'bold', size: 11 },
+          clamp: true,
+          formatter: function (v) { return v ? v : ''; }
+        }
+      }
     }
   });
 }
@@ -848,7 +951,16 @@ function renderReporterCatChart(cur) {
         x: { beginAtZero:true, stacked:true, ticks:{precision:0} },
         y: { stacked:true }
       },
-      plugins: { legend:{ position:'bottom' } }
+      plugins: {
+        legend:{ position:'bottom' },
+        datalabels: {
+          color: '#fff',
+          font: { weight: 'bold', size: 10 },
+          textStrokeColor: 'rgba(0,0,0,0.5)',
+          textStrokeWidth: 2,
+          formatter: function (v) { return v >= 2 ? v : ''; }
+        }
+      }
     }
   });
 }
