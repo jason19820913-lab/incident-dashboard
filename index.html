@@ -52,6 +52,12 @@
   .kpi .deltas { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; font-size: 12px; }
   .kpi .delta { display: flex; justify-content: space-between; }
   .kpi .delta .k { color: #9ca3af; }
+  .kpi .breakdown { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e5e7eb; display: flex; flex-direction: column; gap: 2px; font-size: 11px; }
+  .kpi .breakdown .bd-title { font-size: 10px; color: #9ca3af; margin-bottom: 2px; }
+  .kpi .breakdown .bd-item { display: flex; justify-content: space-between; gap: 6px; color: #4b5563; line-height: 1.5; }
+  .kpi .breakdown .bd-item .bc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .kpi .breakdown .bd-item .bv { font-weight: 600; color: #1f2937; font-variant-numeric: tabular-nums; }
+  .kpi .breakdown .bd-empty { font-size: 11px; color: #9ca3af; }
   .delta-up   { color: #dc2626; font-weight: 600; }
   .delta-down { color: #059669; font-weight: 600; }
   .delta-flat { color: #6b7280; }
@@ -621,21 +627,50 @@ function isDeath(v) { return /死亡/.test(String(v||'')); }
 function isNearMiss(v) { return /跡近|near/i.test(String(v||'')); }
 function isReintub(v) { var s=String(v||'').trim(); if(!s) return false; return !/^(否|無|n|no|0|false)$/i.test(s); }
 
+function categoryBreakdown(rows) {
+  var map = {};
+  rows.forEach(function (r) {
+    var c = String(r[COL.category]||'').trim() || '(未填)';
+    map[c] = (map[c]||0) + 1;
+  });
+  return Object.keys(map).map(function (k) { return {k:k, v:map[k]}; })
+    .sort(function (a, b) { return b.v - a.v; });
+}
+
+function breakdownHtml(arr) {
+  if (!arr || arr.length === 0) return '<div class="bd-empty">無事件</div>';
+  return arr.map(function (x) {
+    return '<div class="bd-item"><span class="bc" title="' + escapeHtml(x.k) + '">' +
+      escapeHtml(x.k) + '</span><span class="bv">' + x.v + '</span></div>';
+  }).join('');
+}
+
 function renderKPIs(cur, lm, ly) {
   var cards = [
-    { label: '總事件數', v: cur.length, lm: lm.length, ly: ly.length }
+    {
+      label: '總事件數',
+      v: cur.length, lm: lm.length, ly: ly.length,
+      breakdown: categoryBreakdown(cur)
+    }
   ];
-  // SAC 1 ~ SAC 5 各自分級
+  // SAC 1 ~ SAC 5 各自分級，附上該分級的事件類別統計
   for (var lv = 1; lv <= 5; lv++) {
     var test = makeSacLevelTest(lv);
+    var sacRows = cur.filter(function (r) { return test(r[COL.sac]); });
     cards.push({
       label: 'SAC ' + lv,
-      v:  countWhere(cur, COL.sac, test),
-      lm: countWhere(lm,  COL.sac, test),
-      ly: countWhere(ly,  COL.sac, test)
+      v:  sacRows.length,
+      lm: countWhere(lm, COL.sac, test),
+      ly: countWhere(ly, COL.sac, test),
+      breakdown: categoryBreakdown(sacRows)
     });
   }
   $('kpi-grid').innerHTML = cards.map(function (c) {
+    var breakdown = '';
+    if (c.breakdown) {
+      breakdown = '<div class="breakdown"><div class="bd-title">事件類別</div>' +
+        breakdownHtml(c.breakdown) + '</div>';
+    }
     return '<div class="card kpi">' +
       '<div class="label">' + c.label + '</div>' +
       '<div class="value">' + c.v + '</div>' +
@@ -643,6 +678,7 @@ function renderKPIs(cur, lm, ly) {
         '<div class="delta"><span class="k">vs 上月同期</span>' + deltaBadge(c.v, c.lm) + '</div>' +
         '<div class="delta"><span class="k">vs 去年同期</span>' + deltaBadge(c.v, c.ly) + '</div>' +
       '</div>' +
+      breakdown +
     '</div>';
   }).join('');
 }
