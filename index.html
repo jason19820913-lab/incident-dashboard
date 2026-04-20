@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>不良事件儀表板</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", "PingFang TC", sans-serif;
+    margin: 0;
+    background: #f5f7fa;
+    color: #1f2937;
+    padding: 16px;
+  }
+  h1 { margin: 0 0 4px; font-size: 22px; color: #111827; }
+  .subtitle { color: #6b7280; font-size: 13px; margin-bottom: 16px; }
+
+  .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+
+  .filter-bar {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+    margin-bottom: 16px;
+  }
+  .filter-bar .field { display: flex; flex-direction: column; gap: 4px; }
+  .filter-bar label { font-size: 12px; color: #6b7280; font-weight: 600; }
+  .filter-bar input, .filter-bar select, .filter-bar button {
+    padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px;
+    font-size: 14px; background: #fff; color: #1f2937;
+    min-height: 36px;
+  }
+  .filter-bar button.primary { background: #2563eb; color: #fff; border-color: #2563eb; cursor: pointer; font-weight: 600; }
+  .filter-bar button.primary:hover { background: #1d4ed8; }
+  .filter-bar button.ghost { background: #fff; cursor: pointer; }
+  .filter-bar button.ghost:hover { background: #f3f4f6; }
+
+  .presets { display: flex; gap: 6px; flex-wrap: wrap; }
+  .presets button { padding: 6px 10px; font-size: 12px; border-radius: 6px; }
+
+  /* 類別多選下拉 */
+  .multi-select {
+    position: relative;
+    min-width: 200px;
+  }
+  .ms-toggle {
+    padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px;
+    background: #fff; cursor: pointer; font-size: 14px; text-align: left; width: 100%;
+    min-height: 36px;
+  }
+  .ms-panel {
+    display: none;
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    background: #fff; border: 1px solid #d1d5db; border-radius: 8px;
+    max-height: 300px; overflow-y: auto; z-index: 50;
+    box-shadow: 0 4px 12px rgba(0,0,0,.12);
+    padding: 8px;
+  }
+  .ms-panel.open { display: block; }
+  .ms-panel label { display: flex; align-items: center; gap: 6px; padding: 4px 6px; cursor: pointer; font-size: 14px; color: #1f2937; }
+  .ms-panel label:hover { background: #f3f4f6; border-radius: 4px; }
+  .ms-actions { display: flex; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid #e5e7eb; margin-bottom: 6px; }
+  .ms-actions button { padding: 4px 8px; font-size: 12px; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; cursor: pointer; }
+
+  /* KPI */
+  .kpi-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px; margin-bottom: 16px;
+  }
+  .kpi { padding: 14px 16px; }
+  .kpi .label { font-size: 13px; color: #6b7280; font-weight: 600; margin-bottom: 6px; }
+  .kpi .value { font-size: 28px; font-weight: 700; color: #111827; line-height: 1.2; }
+  .kpi .deltas { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; font-size: 12px; }
+  .kpi .delta { display: flex; justify-content: space-between; }
+  .kpi .delta .k { color: #9ca3af; }
+  .delta-up   { color: #dc2626; font-weight: 600; }   /* 事件數升高 = 紅 */
+  .delta-down { color: #059669; font-weight: 600; }   /* 事件數降低 = 綠 */
+  .delta-flat { color: #6b7280; }
+
+  /* Chart grid */
+  .chart-grid {
+    display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px;
+  }
+  .chart-card h3 { margin: 0 0 10px; font-size: 14px; color: #374151; font-weight: 600; }
+  .c-full { grid-column: span 12; }
+  .c-half { grid-column: span 6; }
+  .c-third { grid-column: span 4; }
+
+  .chart-box { position: relative; height: 280px; }
+  .chart-box.tall { height: 360px; }
+
+  .empty { text-align: center; color: #9ca3af; padding: 30px; font-size: 14px; }
+  .loading { text-align: center; color: #2563eb; padding: 40px; font-size: 14px; }
+  .error { text-align: center; color: #dc2626; padding: 20px; font-size: 14px; background: #fef2f2; border-radius: 8px; }
+
+  @media (max-width: 900px) {
+    .c-half, .c-third { grid-column: span 12; }
+  }
+</style>
+</head>
+<body>
+
+<h1>不良事件儀表板</h1>
+<div class="subtitle">可依日期範圍與事件類別篩選，並與上月同期、去年同期比較</div>
+
+<div class="card filter-bar" id="filter-bar">
+  <div class="field">
+    <label>起始日期</label>
+    <input type="date" id="f-start" />
+  </div>
+  <div class="field">
+    <label>結束日期</label>
+    <input type="date" id="f-end" />
+  </div>
+  <div class="field" style="flex: 1; min-width: 200px;">
+    <label>事件類別</label>
+    <div class="multi-select" id="ms-category">
+      <button type="button" class="ms-toggle" id="ms-toggle">全部類別</button>
+      <div class="ms-panel" id="ms-panel">
+        <div class="ms-actions">
+          <button type="button" onclick="msSelectAll(true)">全選</button>
+          <button type="button" onclick="msSelectAll(false)">全不選</button>
+        </div>
+        <div id="ms-options"></div>
+      </div>
+    </div>
+  </div>
+  <div class="field">
+    <label>快速選擇</label>
+    <div class="presets">
+      <button type="button" class="ghost" onclick="applyPreset('30d')">近30天</button>
+      <button type="button" class="ghost" onclick="applyPreset('thisMonth')">本月</button>
+      <button type="button" class="ghost" onclick="applyPreset('lastMonth')">上月</button>
+      <button type="button" class="ghost" onclick="applyPreset('ytd')">今年</button>
+    </div>
+  </div>
+  <div class="field">
+    <label>&nbsp;</label>
+    <button type="button" class="primary" onclick="refresh()">套用</button>
+  </div>
+  <div class="field">
+    <label>&nbsp;</label>
+    <button type="button" class="ghost" onclick="reloadData()">重新載入</button>
+  </div>
+</div>
+
+<div id="status"></div>
+
+<div id="kpi-grid" class="kpi-grid"></div>
+
+<div class="chart-grid">
+  <div class="card chart-card c-full">
+    <h3>事件趨勢（本期 vs 上月同期 vs 去年同期）</h3>
+    <div class="chart-box tall"><canvas id="chart-trend"></canvas></div>
+  </div>
+  <div class="card chart-card c-half">
+    <h3>事件類別分布</h3>
+    <div class="chart-box"><canvas id="chart-category"></canvas></div>
+  </div>
+  <div class="card chart-card c-half">
+    <h3>發生階段</h3>
+    <div class="chart-box"><canvas id="chart-stage"></canvas></div>
+  </div>
+  <div class="card chart-card c-half">
+    <h3>發生主原因 Top 10</h3>
+    <div class="chart-box"><canvas id="chart-cause"></canvas></div>
+  </div>
+  <div class="card chart-card c-half">
+    <h3>SAC 分級分布</h3>
+    <div class="chart-box"><canvas id="chart-sac"></canvas></div>
+  </div>
+  <div class="card chart-card c-half">
+    <h3>嚴重程度</h3>
+    <div class="chart-box"><canvas id="chart-severity"></canvas></div>
+  </div>
+  <div class="card chart-card c-half">
+    <h3>發生單位 Top 10</h3>
+    <div class="chart-box"><canvas id="chart-unit"></canvas></div>
+  </div>
+</div>
+
+<script>
+// ====== 設定 ======
+// 部署完 Apps Script 後，把 Web App URL 貼到這裡
+var API_URL = 'https://script.google.com/macros/s/AKfycbweUGwYnhtCwugrG8FvquIO9rwXBZB0MJNfJiSD6g2wGw8a711vimlkzVc1cEZnONn4/exec';
+
+// 欄位名稱（對應 Sheet 標題列）
+var COL = {
+  date: '日期',
+  category: '事件類別',
+  unit: '發生單位',
+  stage: '發生階段',
+  cause: '發生主原因',
+  sac: 'SAC分級',
+  severity: '嚴重程度'
+};
+
+// ====== 全域狀態 ======
+var RAW = [];          // 全部資料（從 API 取回）
+var CATEGORIES = [];   // 類別清單
+var CAT_SELECTED = {}; // { '跌倒': true, ... }
+var CHARTS = {};       // Chart 實例
+
+// ====== 工具 ======
+function $(id) { return document.getElementById(id); }
+
+function parseDate(s) {
+  if (!s) return null;
+  // 支援 YYYY-MM-DD / YYYY/MM/DD
+  var str = String(s).replace(/\//g, '-').slice(0, 10);
+  var m = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!m) return null;
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  var y = d.getFullYear();
+  var m = String(d.getMonth() + 1).padStart(2, '0');
+  var dd = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + dd;
+}
+
+function shiftMonths(d, n) {
+  var nd = new Date(d.getTime());
+  nd.setMonth(nd.getMonth() + n);
+  return nd;
+}
+function shiftYears(d, n) {
+  var nd = new Date(d.getTime());
+  nd.setFullYear(nd.getFullYear() + n);
+  return nd;
+}
+function addDays(d, n) {
+  var nd = new Date(d.getTime());
+  nd.setDate(nd.getDate() + n);
+  return nd;
+}
+
+function setStatus(html, type) {
+  var s = $('status');
+  if (!html) { s.innerHTML = ''; return; }
+  s.innerHTML = '<div class="card ' + (type || 'loading') + '">' + html + '</div>';
+}
+
+// ====== 載入資料 ======
+function reloadData() {
+  if (!API_URL || API_URL.indexOf('PASTE_YOUR') === 0) {
+    setStatus('⚠️ 尚未設定 API_URL。請先部署 Apps Script，把 Web App URL 貼到 dashboard.html 第一段 JavaScript 裡的 API_URL 變數。', 'error');
+    return;
+  }
+  setStatus('載入中...', 'loading');
+  fetch(API_URL + '?action=getData')
+    .then(function (r) { return r.json(); })
+    .then(function (res) {
+      if (res.error) {
+        setStatus('載入失敗：' + res.error, 'error');
+        return;
+      }
+      RAW = res.data || [];
+      buildCategoryList();
+      initDateRange();
+      setStatus('');
+      refresh();
+    })
+    .catch(function (err) {
+      setStatus('載入失敗：' + err.message, 'error');
+    });
+}
+
+function buildCategoryList() {
+  var set = {};
+  RAW.forEach(function (r) {
+    var c = (r[COL.category] || '').trim();
+    if (c) set[c] = true;
+  });
+  CATEGORIES = Object.keys(set).sort();
+  // 預設全選
+  CAT_SELECTED = {};
+  CATEGORIES.forEach(function (c) { CAT_SELECTED[c] = true; });
+  renderCategoryOptions();
+}
+
+function renderCategoryOptions() {
+  var html = '';
+  CATEGORIES.forEach(function (c, i) {
+    html += '<label><input type="checkbox" data-cat="' + i + '"' +
+      (CAT_SELECTED[c] ? ' checked' : '') + '>' + escapeHtml(c) + '</label>';
+  });
+  $('ms-options').innerHTML = html;
+  $('ms-options').querySelectorAll('input[type=checkbox]').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      var cat = CATEGORIES[parseInt(cb.getAttribute('data-cat'), 10)];
+      CAT_SELECTED[cat] = cb.checked;
+      updateMsLabel();
+    });
+  });
+  updateMsLabel();
+}
+
+function updateMsLabel() {
+  var selected = CATEGORIES.filter(function (c) { return CAT_SELECTED[c]; });
+  var label;
+  if (selected.length === 0) label = '未選取任何類別';
+  else if (selected.length === CATEGORIES.length) label = '全部類別（' + CATEGORIES.length + '）';
+  else if (selected.length <= 2) label = selected.join('、');
+  else label = '已選 ' + selected.length + ' 類';
+  $('ms-toggle').textContent = label;
+}
+
+function msSelectAll(val) {
+  CATEGORIES.forEach(function (c) { CAT_SELECTED[c] = !!val; });
+  renderCategoryOptions();
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+// 點擊外面關閉下拉
+document.addEventListener('click', function (e) {
+  var ms = $('ms-category');
+  if (!ms.contains(e.target)) $('ms-panel').classList.remove('open');
+});
+document.addEventListener('DOMContentLoaded', function () {
+  $('ms-toggle').addEventListener('click', function (e) {
+    e.stopPropagation();
+    $('ms-panel').classList.toggle('open');
+  });
+});
+
+// ====== 日期範圍 ======
+function initDateRange() {
+  // 預設：本月
+  applyPreset('thisMonth', true);
+}
+
+function applyPreset(key, skipRefresh) {
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  var start, end;
+  if (key === '30d') {
+    end = today;
+    start = addDays(today, -29);
+  } else if (key === 'thisMonth') {
+    start = new Date(today.getFullYear(), today.getMonth(), 1);
+    end = today;
+  } else if (key === 'lastMonth') {
+    start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    end = new Date(today.getFullYear(), today.getMonth(), 0);
+  } else if (key === 'ytd') {
+    start = new Date(today.getFullYear(), 0, 1);
+    end = today;
+  }
+  $('f-start').value = fmtDate(start);
+  $('f-end').value = fmtDate(end);
+  if (!skipRefresh) refresh();
+}
+
+// ====== 篩選 ======
+function getFilters() {
+  var start = parseDate($('f-start').value);
+  var end = parseDate($('f-end').value);
+  if (start && end && start > end) { var t = start; start = end; end = t; }
+  return { start: start, end: end };
+}
+
+function filterRows(rows, start, end) {
+  return rows.filter(function (r) {
+    var d = parseDate(r[COL.date]);
+    if (!d) return false;
+    if (start && d < start) return false;
+    if (end && d > end) return false;
+    var c = (r[COL.category] || '').trim();
+    if (CATEGORIES.length > 0 && !CAT_SELECTED[c]) return false;
+    return true;
+  });
+}
+
+// 把 [start, end] 平移 n 個月
+function shiftRange(start, end, months, years) {
+  var s = start, e = end;
+  if (months) { s = shiftMonths(s, months); e = shiftMonths(e, months); }
+  if (years)  { s = shiftYears(s, years);   e = shiftYears(e, years);   }
+  return { start: s, end: e };
+}
+
+// ====== 指標 & 圖表 ======
+function refresh() {
+  if (!RAW || RAW.length === 0) {
+    setStatus('尚未載入資料', 'error');
+    return;
+  }
+  var f = getFilters();
+  if (!f.start || !f.end) {
+    setStatus('請選擇起始與結束日期', 'error');
+    return;
+  }
+  setStatus('');
+
+  var cur = filterRows(RAW, f.start, f.end);
+  var lmR = shiftRange(f.start, f.end, -1, 0);
+  var lm  = filterRows(RAW, lmR.start, lmR.end);
+  var lyR = shiftRange(f.start, f.end, 0, -1);
+  var ly  = filterRows(RAW, lyR.start, lyR.end);
+
+  renderKPIs(cur, lm, ly);
+  renderTrend(cur, lm, ly, f.start, f.end);
+  renderCategory(cur);
+  renderStage(cur);
+  renderCause(cur);
+  renderSac(cur);
+  renderSeverity(cur);
+  renderUnit(cur);
+}
+
+function deltaBadge(cur, prev) {
+  if (prev === 0) {
+    if (cur === 0) return '<span class="delta-flat">—</span>';
+    return '<span class="delta-up">新增 ' + cur + '</span>';
+  }
+  var diff = cur - prev;
+  var pct = Math.round((diff / prev) * 1000) / 10;
+  var sign = diff > 0 ? '▲' : (diff < 0 ? '▼' : '—');
+  var cls = diff > 0 ? 'delta-up' : (diff < 0 ? 'delta-down' : 'delta-flat');
+  return '<span class="' + cls + '">' + sign + ' ' + Math.abs(pct) + '% (' + prev + ')</span>';
+}
+
+function count(rows) { return rows.length; }
+function countWhere(rows, key, test) {
+  var n = 0;
+  rows.forEach(function (r) { if (test(r[key])) n++; });
+  return n;
+}
+
+function renderKPIs(cur, lm, ly) {
+  var curN = count(cur);
+  var lmN = count(lm);
+  var lyN = count(ly);
+
+  // SAC 分級 3 以上視為高風險
+  function isHighSac(v) {
+    var m = String(v || '').match(/\d+/);
+    if (!m) return false;
+    return parseInt(m[0], 10) >= 3;
+  }
+  var curSac = countWhere(cur, COL.sac, isHighSac);
+  var lmSac  = countWhere(lm,  COL.sac, isHighSac);
+  var lySac  = countWhere(ly,  COL.sac, isHighSac);
+
+  // 重新插管（非空、非否、非無）
+  function isReintub(v) {
+    var s = String(v || '').trim();
+    if (!s) return false;
+    if (/^(否|無|n|no|0|false)$/i.test(s)) return false;
+    return true;
+  }
+  var curRe = countWhere(cur, '重新插管', isReintub);
+  var lmRe  = countWhere(lm,  '重新插管', isReintub);
+  var lyRe  = countWhere(ly,  '重新插管', isReintub);
+
+  // 嚴重程度：警訊 / 嚴重
+  function isSevere(v) {
+    var s = String(v || '');
+    return /警訊|嚴重|重大/.test(s);
+  }
+  var curSv = countWhere(cur, COL.severity, isSevere);
+  var lmSv  = countWhere(lm,  COL.severity, isSevere);
+  var lySv  = countWhere(ly,  COL.severity, isSevere);
+
+  var cards = [
+    { label: '總事件數', value: curN, lm: lmN, ly: lyN },
+    { label: '高 SAC 級 (≥3)', value: curSac, lm: lmSac, ly: lySac },
+    { label: '嚴重 / 警訊事件', value: curSv, lm: lmSv, ly: lySv },
+    { label: '重新插管', value: curRe, lm: lmRe, ly: lyRe }
+  ];
+
+  var html = cards.map(function (c) {
+    return '<div class="card kpi">' +
+      '<div class="label">' + c.label + '</div>' +
+      '<div class="value">' + c.value + '</div>' +
+      '<div class="deltas">' +
+        '<div class="delta"><span class="k">vs 上月同期</span>' + deltaBadge(c.value, c.lm) + '</div>' +
+        '<div class="delta"><span class="k">vs 去年同期</span>' + deltaBadge(c.value, c.ly) + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  $('kpi-grid').innerHTML = html;
+}
+
+// ====== Chart 通用工具 ======
+function destroyChart(id) {
+  if (CHARTS[id]) { CHARTS[id].destroy(); CHARTS[id] = null; }
+}
+
+var PALETTE = [
+  '#2563eb', '#16a34a', '#dc2626', '#f59e0b', '#7c3aed',
+  '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4b5563',
+  '#0ea5e9', '#84cc16', '#f43f5e', '#a855f7', '#14b8a6'
+];
+
+function groupCount(rows, key) {
+  var out = {};
+  rows.forEach(function (r) {
+    var v = (r[key] || '').trim() || '(未填)';
+    out[v] = (out[v] || 0) + 1;
+  });
+  return out;
+}
+
+function sortedEntries(obj, topN) {
+  var arr = Object.keys(obj).map(function (k) { return { k: k, v: obj[k] }; });
+  arr.sort(function (a, b) { return b.v - a.v; });
+  if (topN && arr.length > topN) arr = arr.slice(0, topN);
+  return arr;
+}
+
+// ====== 趨勢：按本期長度決定用日 or 月當單位 ======
+function renderTrend(cur, lm, ly, start, end) {
+  var days = Math.round((end - start) / 86400000) + 1;
+  var useMonthly = days > 62;  // 超過 62 天改月為單位
+
+  var buckets = [];            // [{label, startOffsetDays, endOffsetDays}]
+  if (useMonthly) {
+    // 本期跨越的月份
+    var cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    while (cursor <= end) {
+      var ns = new Date(cursor.getTime());
+      var ne = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
+      if (ne > end) ne = end;
+      if (ns < start) ns = start;
+      buckets.push({
+        label: cursor.getFullYear() + '/' + String(cursor.getMonth() + 1).padStart(2, '0'),
+        s: ns, e: ne
+      });
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    }
+  } else {
+    for (var i = 0; i < days; i++) {
+      var d = addDays(start, i);
+      buckets.push({ label: fmtDate(d).slice(5), s: d, e: d });
+    }
+  }
+
+  function bucketCount(rows, bs, be) {
+    var n = 0;
+    rows.forEach(function (r) {
+      var d = parseDate(r[COL.date]);
+      if (!d) return;
+      if (d >= bs && d <= be) n++;
+    });
+    return n;
+  }
+
+  var curSeries = [];
+  var lmSeries = [];
+  var lySeries = [];
+  buckets.forEach(function (b) {
+    curSeries.push(bucketCount(cur, b.s, b.e));
+    var lmS = shiftMonths(b.s, -1), lmE = shiftMonths(b.e, -1);
+    lmSeries.push(bucketCount(lm, lmS, lmE));
+    var lyS = shiftYears(b.s, -1), lyE = shiftYears(b.e, -1);
+    lySeries.push(bucketCount(ly, lyS, lyE));
+  });
+
+  destroyChart('trend');
+  CHARTS.trend = new Chart($('chart-trend'), {
+    type: 'line',
+    data: {
+      labels: buckets.map(function (b) { return b.label; }),
+      datasets: [
+        { label: '本期', data: curSeries, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,.1)', tension: .3, fill: false, pointRadius: 3 },
+        { label: '上月同期', data: lmSeries, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,.1)', borderDash: [6,4], tension: .3, fill: false, pointRadius: 2 },
+        { label: '去年同期', data: lySeries, borderColor: '#9ca3af', backgroundColor: 'rgba(156,163,175,.1)', borderDash: [2,3], tension: .3, fill: false, pointRadius: 2 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+      plugins: { legend: { position: 'top' } }
+    }
+  });
+}
+
+function renderCategory(cur) {
+  var g = groupCount(cur, COL.category);
+  var arr = sortedEntries(g);
+  destroyChart('category');
+  CHARTS.category = new Chart($('chart-category'), {
+    type: 'doughnut',
+    data: {
+      labels: arr.map(function (x) { return x.k; }),
+      datasets: [{ data: arr.map(function (x) { return x.v; }), backgroundColor: PALETTE }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'right' } }
+    }
+  });
+}
+
+function renderBar(canvasId, chartKey, arr, color, horizontal) {
+  destroyChart(chartKey);
+  CHARTS[chartKey] = new Chart($(canvasId), {
+    type: 'bar',
+    data: {
+      labels: arr.map(function (x) { return x.k; }),
+      datasets: [{ label: '次數', data: arr.map(function (x) { return x.v; }), backgroundColor: color }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: horizontal ? 'y' : 'x',
+      scales: {
+        x: { beginAtZero: true, ticks: { precision: 0 } },
+        y: { beginAtZero: true, ticks: { precision: 0 } }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+function renderStage(cur) {
+  renderBar('chart-stage', 'stage', sortedEntries(groupCount(cur, COL.stage)), '#16a34a', true);
+}
+function renderCause(cur) {
+  renderBar('chart-cause', 'cause', sortedEntries(groupCount(cur, COL.cause), 10), '#dc2626', true);
+}
+function renderSac(cur) {
+  var arr = sortedEntries(groupCount(cur, COL.sac));
+  // 依 SAC 等級排序
+  arr.sort(function (a, b) {
+    var ai = parseInt((a.k.match(/\d+/) || [99])[0], 10);
+    var bi = parseInt((b.k.match(/\d+/) || [99])[0], 10);
+    return ai - bi;
+  });
+  renderBar('chart-sac', 'sac', arr, '#7c3aed', false);
+}
+function renderSeverity(cur) {
+  renderBar('chart-severity', 'severity', sortedEntries(groupCount(cur, COL.severity)), '#f59e0b', false);
+}
+function renderUnit(cur) {
+  renderBar('chart-unit', 'unit', sortedEntries(groupCount(cur, COL.unit), 10), '#0891b2', true);
+}
+
+// ====== 啟動 ======
+document.addEventListener('DOMContentLoaded', function () {
+  initDateRange();
+  reloadData();
+});
+</script>
+
+</body>
+</html>
