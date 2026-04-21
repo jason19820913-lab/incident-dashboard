@@ -298,6 +298,18 @@
     <button type="button" class="ai-btn" onclick="clearAiKey()" id="ai-key-clear" style="display:none;">清除金鑰</button>
     <span class="ai-key-hint">金鑰只儲存在你的瀏覽器（localStorage），不會上傳。免費取得 → <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a></span>
   </div>
+  <div class="ai-key-row">
+    <label for="ai-model" style="font-weight:600; color:#374151;">🧠 模型：</label>
+    <select id="ai-model" onchange="onAiModelChange()" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:8px; font-size:13px; min-height:32px; background:#fff;">
+      <option value="gemini-2.0-flash">gemini-2.0-flash（均衡，預設）</option>
+      <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite（配額最寬，30 RPM）</option>
+      <option value="gemini-2.5-flash">gemini-2.5-flash（品質較佳，配額較緊）</option>
+      <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite（新版輕量）</option>
+      <option value="gemini-1.5-flash">gemini-1.5-flash（舊款穩定）</option>
+      <option value="gemini-1.5-flash-8b">gemini-1.5-flash-8b（最省 token）</option>
+    </select>
+    <span class="ai-key-hint">遇到 429 配額用完時，切到 flash-lite 每分鐘限制較寬；或到 <a href="https://ai.dev/rate-limit" target="_blank" rel="noopener">ai.dev/rate-limit</a> 查看用量</span>
+  </div>
   <div class="ai-actions">
     <button type="button" class="ai-btn primary" onclick="aiAnalyze()">📊 自動數據剖析</button>
     <button type="button" class="ai-btn primary" onclick="aiSuggest()">💡 改善對策建議</button>
@@ -1299,6 +1311,19 @@ function buildAiSummary() {
     rows.forEach(function (r) { var k = normKey(r[key]); m[k] = (m[k]||0) + 1; });
     return m;
   }
+  // 只取前 N 名，其他彙總為「其他」，減少送給 Gemini 的 token 數
+  function topN(obj, n) {
+    var keys = Object.keys(obj).sort(function (a, b) { return obj[b] - obj[a]; });
+    if (keys.length <= n) return obj;
+    var out = {};
+    var other = 0;
+    keys.forEach(function (k, i) {
+      if (i < n) out[k] = obj[k];
+      else other += obj[k];
+    });
+    if (other > 0) out['其他(合計)'] = other;
+    return out;
+  }
   function deltaPct(cur, prev) {
     if (prev === 0) return cur === 0 ? 0 : null;
     return Math.round((cur - prev) / prev * 1000) / 10;
@@ -1312,20 +1337,38 @@ function buildAiSummary() {
       yoyPct: deltaPct(cur.length, ly.length)
     },
     sac: { cur: bc(cur, COL.sac),       lm: bc(lm, COL.sac),       ly: bc(ly, COL.sac) },
-    byCategory: { cur: bc(cur, COL.category), lm: bc(lm, COL.category), ly: bc(ly, COL.category) },
-    byUnit:     { cur: bc(cur, COL.unit) },
-    bySeverity: { cur: bc(cur, COL.severity) },
-    byStage:    { cur: bc(cur, COL.stage) },
-    byCause:    { cur: bc(cur, COL.cause) },
-    byReporter: { cur: bc(cur, COL.reporter) },
+    byCategory: {
+      cur: topN(bc(cur, COL.category), 15),
+      lm:  topN(bc(lm,  COL.category), 10),
+      ly:  topN(bc(ly,  COL.category), 10)
+    },
+    byUnit:        { cur: topN(bc(cur, COL.unit), 15) },
+    bySeverity:    { cur: bc(cur, COL.severity) },
+    byStage:       { cur: topN(bc(cur, COL.stage), 10) },
+    byCause:       { cur: topN(bc(cur, COL.cause), 10) },
+    byReporter:    { cur: bc(cur, COL.reporter) },
     byWillingness: { cur: bc(cur, COL.willingness) }
   };
 }
 
-// ====== AI 個人金鑰（localStorage，每裝置獨立）======
+// ====== AI 個人金鑰與模型選擇（localStorage，每裝置獨立）======
 var AI_KEY_STORAGE = 'gemini_api_key';
+var AI_MODEL_STORAGE = 'gemini_model';
+var AI_DEFAULT_MODEL = 'gemini-2.0-flash';
 function getAiKey() {
   try { return (localStorage.getItem(AI_KEY_STORAGE) || '').trim(); } catch (e) { return ''; }
+}
+function getAiModel() {
+  try { return (localStorage.getItem(AI_MODEL_STORAGE) || AI_DEFAULT_MODEL).trim(); } catch (e) { return AI_DEFAULT_MODEL; }
+}
+function setAiModel(m) {
+  try { localStorage.setItem(AI_MODEL_STORAGE, String(m || AI_DEFAULT_MODEL).trim()); } catch (e) {}
+}
+function onAiModelChange() {
+  var sel = $('ai-model');
+  if (!sel) return;
+  setAiModel(sel.value);
+  aiShowOut('🧠 已切換模型為：' + sel.value + '（只影響這個瀏覽器）', '');
 }
 function setAiKey(k) {
   try { localStorage.setItem(AI_KEY_STORAGE, String(k || '').trim()); } catch (e) {}
@@ -1381,6 +1424,57 @@ function aiShowOut(text, klass) {
   el.textContent = text;
 }
 
+// 輕量且安全的 Markdown → HTML 轉換（先 escape HTML，再套樣式）
+function mdToHtml(md) {
+  if (!md) return '';
+  // 1. escape HTML（避免 XSS）
+  var s = String(md).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // 2. 程式碼區塊 ```...```
+  s = s.replace(/```([\s\S]*?)```/g, function (_, code) {
+    return '<pre style="background:#f3f4f6;padding:10px;border-radius:6px;overflow:auto;font-size:12px;">' + code + '</pre>';
+  });
+  // 3. 行內 code `xxx`
+  s = s.replace(/`([^`\n]+)`/g, '<code style="background:#f3f4f6;padding:1px 6px;border-radius:4px;font-size:13px;">$1</code>');
+  // 4. 標題（先 ### 再 ## 再 #，避免吃掉）
+  s = s.replace(/^###\s+(.+)$/gm, '<h4 style="margin:14px 0 6px;color:#1e3a8a;font-size:14px;border-left:3px solid #60a5fa;padding-left:8px;">$1</h4>');
+  s = s.replace(/^##\s+(.+)$/gm,  '<h3 style="margin:18px 0 8px;color:#1e40af;font-size:16px;padding-bottom:4px;border-bottom:2px solid #bfdbfe;">$1</h3>');
+  s = s.replace(/^#\s+(.+)$/gm,   '<h2 style="margin:20px 0 10px;color:#1e3a8a;font-size:17px;">$1</h2>');
+  // 5. 粗體與斜體
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong style="color:#b91c1c;">$1</strong>');
+  s = s.replace(/(^|[^\*])\*([^\*\n]+)\*/g, '$1<em>$2</em>');
+  // 6. 列表（- 或 * 開頭，連續視為同一個 ul）
+  var lines = s.split('\n');
+  var out = [], inUl = false, inOl = false;
+  for (var i = 0; i < lines.length; i++) {
+    var ln = lines[i];
+    var mUl = /^\s*[-•]\s+(.+)$/.exec(ln);
+    var mOl = /^\s*(\d+)\.\s+(.+)$/.exec(ln);
+    if (mUl) {
+      if (!inUl) { out.push('<ul style="margin:6px 0 10px 20px;padding:0;">'); inUl = true; }
+      if (inOl) { out.push('</ol>'); inOl = false; }
+      out.push('<li style="margin:3px 0;line-height:1.75;">' + mUl[1] + '</li>');
+    } else if (mOl) {
+      if (!inOl) { out.push('<ol style="margin:6px 0 10px 20px;padding:0;">'); inOl = true; }
+      if (inUl) { out.push('</ul>'); inUl = false; }
+      out.push('<li style="margin:3px 0;line-height:1.75;">' + mOl[2] + '</li>');
+    } else {
+      if (inUl) { out.push('</ul>'); inUl = false; }
+      if (inOl) { out.push('</ol>'); inOl = false; }
+      out.push(ln);
+    }
+  }
+  if (inUl) out.push('</ul>');
+  if (inOl) out.push('</ol>');
+  s = out.join('\n');
+  // 7. 段落（連續空行分段；單純換行改成 <br>）
+  s = s.split(/\n{2,}/).map(function (block) {
+    // 已經是 block-level 的保留原樣
+    if (/^<(h[1-6]|ul|ol|pre|blockquote|div|table)/.test(block.trim())) return block;
+    return '<p style="margin:6px 0;line-height:1.8;">' + block.replace(/\n/g,'<br>') + '</p>';
+  }).join('\n');
+  return s;
+}
+
 function aiAddHistory(q, a) {
   var el = $('ai-history');
   var div = document.createElement('div');
@@ -1390,12 +1484,47 @@ function aiAddHistory(q, a) {
   qDiv.textContent = q;
   var aDiv = document.createElement('div');
   aDiv.className = 'ai-a';
-  aDiv.textContent = a;
+  aDiv.innerHTML = mdToHtml(a);
+  // 複製 / 下載按鈕
+  var toolbar = document.createElement('div');
+  toolbar.style.cssText = 'display:flex;gap:6px;margin-top:8px;justify-content:flex-end;';
+  toolbar.innerHTML =
+    '<button type="button" class="ai-btn" style="padding:4px 10px;font-size:12px;min-height:28px;" onclick="aiCopyText(this)">📋 複製文字</button>' +
+    '<button type="button" class="ai-btn" style="padding:4px 10px;font-size:12px;min-height:28px;" onclick="aiDownloadMd(this)">💾 下載 .md</button>';
+  // 隱藏原始 markdown 供複製 / 下載使用
+  aDiv.setAttribute('data-md', a);
   div.appendChild(qDiv);
   div.appendChild(aDiv);
+  div.appendChild(toolbar);
   el.insertBefore(div, el.firstChild);
   aiShowOut('✅ 已回答，請看上方對話', '');
   $('ai-output').className = 'ai-output empty';
+}
+
+function aiCopyText(btn) {
+  var item = btn.closest('.ai-item');
+  if (!item) return;
+  var a = item.querySelector('.ai-a');
+  var md = (a && a.getAttribute('data-md')) || (a ? a.innerText : '');
+  (navigator.clipboard && navigator.clipboard.writeText)
+    ? navigator.clipboard.writeText(md).then(function () { btn.textContent = '✅ 已複製'; setTimeout(function(){ btn.textContent = '📋 複製文字'; }, 1500); })
+    : (function () { var ta = document.createElement('textarea'); ta.value = md; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); btn.textContent = '✅ 已複製'; setTimeout(function(){ btn.textContent = '📋 複製文字'; }, 1500); })();
+}
+
+function aiDownloadMd(btn) {
+  var item = btn.closest('.ai-item');
+  if (!item) return;
+  var q = item.querySelector('.ai-q') ? item.querySelector('.ai-q').innerText.replace(/^🙋\s*/, '') : 'AI回覆';
+  var a = item.querySelector('.ai-a');
+  var md = (a && a.getAttribute('data-md')) || '';
+  var stamp = new Date().toISOString().slice(0,10);
+  var fname = '病安AI_' + q.slice(0, 20).replace(/[\\\/:*?"<>|]/g,'_') + '_' + stamp + '.md';
+  var blob = new Blob([ '# ' + q + '\n\n' + md ], { type: 'text/markdown;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var link = document.createElement('a');
+  link.href = url; link.download = fname;
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 500);
 }
 
 function aiDisableButtons(disabled) {
@@ -1424,6 +1553,8 @@ function aiCall(type, question) {
   // 優先用使用者自己的金鑰（此裝置 localStorage），後端沒設定伺服器金鑰時必須要有
   var personalKey = getAiKey();
   if (personalKey) body.apiKey = personalKey;
+  // 模型選擇（此裝置 localStorage）
+  body.model = getAiModel();
 
   fetch(API_URL, {
     method: 'POST',
@@ -1434,6 +1565,22 @@ function aiCall(type, question) {
     .then(function (r) { return r.json(); })
     .then(function (res) {
       aiDisableButtons(false);
+      // 專門處理 429（配額 / 速率限制）
+      if (res.error === 'rate_limit' || res.code === 429) {
+        var cur = getAiModel();
+        var suggestModel = /flash-lite/.test(cur) ? '' : '\n• 改用更寬鬆的模型：點上方「🧠 模型」切到 gemini-2.0-flash-lite（每分鐘 30 次）';
+        var wait = res.retryAfter ? '約 ' + Math.ceil(res.retryAfter) + ' 秒' : '約 60 秒';
+        var rateMsg =
+          '⏳ Gemini 配額已用完（429）\n' +
+          '目前模型：' + (res.model || cur) + '\n\n' +
+          '建議：\n' +
+          '• 等候 ' + wait + ' 再試（每分鐘請求數 RPM 限制）' +
+          suggestModel + '\n' +
+          '• 檢查用量：https://ai.dev/rate-limit\n' +
+          '• 若每日額度用完，請明天再試或升級付費方案';
+        aiShowOut(rateMsg, 'error');
+        return;
+      }
       if (res.error) {
         var emsg = '❌ ' + res.error;
         // 後端回報沒有金鑰 → 引導使用者設定個人金鑰
@@ -1471,11 +1618,19 @@ function aiClear() {
   $('ai-output').className = 'ai-output empty';
 }
 
-// Enter 鍵送出 + 初始化金鑰狀態
+// Enter 鍵送出 + 初始化金鑰狀態 + 同步模型選單
 document.addEventListener('DOMContentLoaded', function () {
   var q = $('ai-q');
   if (q) q.addEventListener('keydown', function (e) { if (e.key === 'Enter') aiAsk(); });
   updateAiKeyStatus();
+  var sel = $('ai-model');
+  if (sel) {
+    var saved = getAiModel();
+    // 若 localStorage 有儲存的值在白名單內則套用
+    var opts = Array.prototype.map.call(sel.options, function (o) { return o.value; });
+    if (opts.indexOf(saved) !== -1) sel.value = saved;
+    else setAiModel(sel.value);
+  }
 });
 
 // ====== NotebookLM 匯出 ======
