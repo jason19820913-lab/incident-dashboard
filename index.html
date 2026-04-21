@@ -114,6 +114,38 @@
     .c-half, .c-third { grid-column: span 12; }
   }
 
+  /* ========== AI 面板 ========== */
+  .ai-panel { background: #fff; border-radius: 12px; padding: 18px; margin-top: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .ai-panel h3 { margin: 0 0 10px; font-size: 16px; color: #111827; display: flex; align-items: center; gap: 8px; }
+  .ai-panel .desc { font-size: 13px; color: #6b7280; margin: 0 0 12px; }
+  .ai-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .ai-btn { padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; cursor: pointer; font-size: 14px; min-height: 36px; }
+  .ai-btn:hover { background: #f3f4f6; }
+  .ai-btn.primary { background: linear-gradient(135deg, #4285f4, #9334e6); color: #fff; border-color: transparent; font-weight: 600; }
+  .ai-btn.primary:hover { filter: brightness(0.92); }
+  .ai-btn.success { background: #059669; color: #fff; border-color: #059669; font-weight: 600; }
+  .ai-btn.success:hover { background: #047857; }
+  .ai-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .ai-input-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .ai-input-row input { flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; min-height: 36px; }
+  .ai-output { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; min-height: 60px; font-size: 14px; line-height: 1.75; color: #1f2937; white-space: pre-wrap; word-break: break-word; }
+  .ai-output.empty { color: #9ca3af; font-style: italic; font-size: 13px; }
+  .ai-output.loading { color: #4285f4; }
+  .ai-output.error { color: #dc2626; background: #fef2f2; border-color: #fecaca; }
+  .ai-history { margin-top: 12px; }
+  .ai-item { margin-bottom: 14px; }
+  .ai-q { font-weight: 600; color: #1e3a8a; margin-bottom: 6px; font-size: 14px; padding: 8px 12px; background: #eff6ff; border-radius: 6px; }
+  .ai-q::before { content: '🙋 '; }
+  .ai-a { background: linear-gradient(#f0f9ff, #fafafa); border-left: 3px solid #4285f4; padding: 12px 14px; border-radius: 0 8px 8px 0; font-size: 14px; line-height: 1.75; white-space: pre-wrap; word-break: break-word; }
+  .ai-a::before { content: '🤖 '; }
+  .ai-footer { font-size: 11px; color: #9ca3af; margin-top: 6px; }
+
+  /* 列印時隱藏 AI 面板 */
+  @media print {
+    .ai-panel { display: none !important; }
+  }
+  body.report-mode .ai-panel { display: none !important; }
+
   /* ========== 月報模式 ========== */
   body.report-mode .filter-bar,
   body.report-mode #dashboard,
@@ -248,6 +280,36 @@
       <div class="chart-box"><canvas id="chart-unit"></canvas></div>
     </div>
   </div>
+</div>
+
+<!-- ====== AI 智能分析（Gemini） ====== -->
+<div class="ai-panel" id="ai-panel">
+  <h3>🤖 AI 智能分析 <span style="font-size:12px; font-weight:400; color:#6b7280;">by Google Gemini</span></h3>
+  <p class="desc">AI 會依目前篩選範圍的資料進行分析，自動排除未篩選到的事件。</p>
+  <div class="ai-actions">
+    <button type="button" class="ai-btn primary" onclick="aiAnalyze()">📊 自動數據剖析</button>
+    <button type="button" class="ai-btn primary" onclick="aiSuggest()">💡 改善對策建議</button>
+    <button type="button" class="ai-btn" onclick="aiClear()">🗑️ 清空對話</button>
+  </div>
+  <div class="ai-input-row">
+    <input type="text" id="ai-q" placeholder="自由提問，例如：跌倒事件最常發生在哪些單位？應如何降低？" />
+    <button type="button" class="ai-btn primary" onclick="aiAsk()">送出</button>
+  </div>
+  <div id="ai-history" class="ai-history"></div>
+  <div id="ai-output" class="ai-output empty">點選上方按鈕或輸入問題，AI 會根據目前篩選的資料作出分析</div>
+  <div class="ai-footer">⚠️ AI 分析僅供參考，臨床決策請以實際資料與專業判斷為準。</div>
+</div>
+
+<!-- ====== NotebookLM 整合 ====== -->
+<div class="ai-panel" id="nblm-panel">
+  <h3>📓 NotebookLM 整合</h3>
+  <p class="desc">將目前篩選範圍的資料匯出為 Markdown / CSV，可上傳到 NotebookLM 作為知識來源，進行多源文件 AI 問答。</p>
+  <div class="ai-actions">
+    <button type="button" class="ai-btn" onclick="exportNblmMd()">📄 匯出摘要 (.md)</button>
+    <button type="button" class="ai-btn" onclick="exportNblmCsv()">📊 匯出明細 (.csv)</button>
+    <button type="button" class="ai-btn success" onclick="window.open('https://notebooklm.google.com/','_blank')">🚀 開啟 NotebookLM</button>
+  </div>
+  <div class="ai-footer">提示：進入 NotebookLM → 建立筆記本 → 新增來源 → 上傳剛才下載的 .md / .csv 檔即可開始 AI 問答。</div>
 </div>
 
 <!-- ====== 月報模式（靜態） ====== -->
@@ -1208,6 +1270,197 @@ function buildReportPage() {
   cmpHtml += '<tr><td class="rowh">管路事件</td><td class="num">' + curT + '</td><td class="num">' + lmT + '</td><td class="num">' + lyT + '</td></tr>';
   cmpHtml += '</tbody></table>';
   $('rep-compare').innerHTML = cmpHtml;
+}
+
+// ====== AI（Gemini）整合 ======
+// 建立給 AI 用的統計摘要（會送到後端 → Apps Script 轉送 Gemini API）
+function buildAiSummary() {
+  var f = getFilters();
+  if (!f.start || !f.end) return null;
+  var cur = filterRows(RAW, f.start, f.end);
+  var lm  = filterRows(RAW, shiftMonths(f.start,-1), shiftMonths(f.end,-1));
+  var ly  = filterRows(RAW, shiftYears(f.start,-1),  shiftYears(f.end,-1));
+
+  function bc(rows, key) {
+    var m = {};
+    rows.forEach(function (r) { var k = normKey(r[key]); m[k] = (m[k]||0) + 1; });
+    return m;
+  }
+  function deltaPct(cur, prev) {
+    if (prev === 0) return cur === 0 ? 0 : null;
+    return Math.round((cur - prev) / prev * 1000) / 10;
+  }
+
+  return {
+    period: { start: fmtDate(f.start), end: fmtDate(f.end) },
+    counts: {
+      cur: cur.length, lm: lm.length, ly: ly.length,
+      momPct: deltaPct(cur.length, lm.length),
+      yoyPct: deltaPct(cur.length, ly.length)
+    },
+    sac: { cur: bc(cur, COL.sac),       lm: bc(lm, COL.sac),       ly: bc(ly, COL.sac) },
+    byCategory: { cur: bc(cur, COL.category), lm: bc(lm, COL.category), ly: bc(ly, COL.category) },
+    byUnit:     { cur: bc(cur, COL.unit) },
+    bySeverity: { cur: bc(cur, COL.severity) },
+    byStage:    { cur: bc(cur, COL.stage) },
+    byCause:    { cur: bc(cur, COL.cause) },
+    byReporter: { cur: bc(cur, COL.reporter) },
+    byWillingness: { cur: bc(cur, COL.willingness) }
+  };
+}
+
+function aiShowOut(text, klass) {
+  var el = $('ai-output');
+  el.className = 'ai-output' + (klass ? ' ' + klass : '');
+  el.textContent = text;
+}
+
+function aiAddHistory(q, a) {
+  var el = $('ai-history');
+  var div = document.createElement('div');
+  div.className = 'ai-item';
+  var qDiv = document.createElement('div');
+  qDiv.className = 'ai-q';
+  qDiv.textContent = q;
+  var aDiv = document.createElement('div');
+  aDiv.className = 'ai-a';
+  aDiv.textContent = a;
+  div.appendChild(qDiv);
+  div.appendChild(aDiv);
+  el.insertBefore(div, el.firstChild);
+  aiShowOut('✅ 已回答，請看上方對話', '');
+  $('ai-output').className = 'ai-output empty';
+}
+
+function aiDisableButtons(disabled) {
+  var btns = document.querySelectorAll('#ai-panel .ai-btn');
+  btns.forEach(function (b) { b.disabled = disabled; });
+}
+
+function aiCall(type, question) {
+  var summary = buildAiSummary();
+  if (!summary) { aiShowOut('⚠️ 請先選擇日期範圍再使用 AI 分析', 'error'); return; }
+
+  var loadingMsg = type === 'analyze' ? '🧠 Gemini 分析中...' :
+                   type === 'suggest' ? '💡 Gemini 研擬改善對策中...' :
+                   '🤖 Gemini 回答中...';
+  aiShowOut(loadingMsg, 'loading');
+  aiDisableButtons(true);
+
+  var params = 'action=gemini' +
+    '&type=' + encodeURIComponent(type) +
+    '&summary=' + encodeURIComponent(JSON.stringify(summary));
+  if (question) params += '&q=' + encodeURIComponent(question);
+
+  fetch(API_URL + '?' + params)
+    .then(function (r) { return r.json(); })
+    .then(function (res) {
+      aiDisableButtons(false);
+      if (res.error) { aiShowOut('❌ ' + res.error, 'error'); return; }
+      var text = res.text || '(空回覆)';
+      if (question) {
+        aiAddHistory(question, text);
+      } else {
+        var label = type === 'analyze' ? '📊 自動數據剖析' : '💡 改善對策建議';
+        aiAddHistory(label, text);
+      }
+    })
+    .catch(function (err) {
+      aiDisableButtons(false);
+      aiShowOut('❌ 連線失敗：' + err.message, 'error');
+    });
+}
+
+function aiAnalyze() { aiCall('analyze'); }
+function aiSuggest() { aiCall('suggest'); }
+function aiAsk() {
+  var q = $('ai-q').value.trim();
+  if (!q) { $('ai-q').focus(); return; }
+  aiCall('ask', q);
+  $('ai-q').value = '';
+}
+function aiClear() {
+  $('ai-history').innerHTML = '';
+  aiShowOut('點選上方按鈕或輸入問題，AI 會根據目前篩選的資料作出分析', '');
+  $('ai-output').className = 'ai-output empty';
+}
+
+// Enter 鍵送出
+document.addEventListener('DOMContentLoaded', function () {
+  var q = $('ai-q');
+  if (q) q.addEventListener('keydown', function (e) { if (e.key === 'Enter') aiAsk(); });
+});
+
+// ====== NotebookLM 匯出 ======
+function downloadFile(content, filename, mime) {
+  var blob = new Blob([content], { type: mime + ';charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 500);
+}
+
+function _tableRows(obj) {
+  return Object.keys(obj).sort(function (a, b) { return (obj[b]||0) - (obj[a]||0); })
+    .map(function (k) { return '- ' + k + '：' + obj[k] + ' 件'; }).join('\n');
+}
+
+function exportNblmMd() {
+  var summary = buildAiSummary();
+  if (!summary) { alert('請先選擇日期範圍'); return; }
+  var s = summary;
+
+  var md = '# 病人安全事件通報統計摘要\n\n';
+  md += '**期間**：' + s.period.start + ' ~ ' + s.period.end + '\n\n';
+  md += '## 件數比較\n\n';
+  md += '| 期間 | 件數 |\n|------|------|\n';
+  md += '| 本期 | ' + s.counts.cur + ' |\n';
+  md += '| 上月同期 | ' + s.counts.lm + ' (MoM ' + (s.counts.momPct == null ? 'N/A' : s.counts.momPct + '%') + ') |\n';
+  md += '| 去年同期 | ' + s.counts.ly + ' (YoY ' + (s.counts.yoyPct == null ? 'N/A' : s.counts.yoyPct + '%') + ') |\n\n';
+
+  md += '## 事件類別分布（三期比較）\n\n';
+  md += '| 類別 | 本期 | 上月同期 | 去年同期 |\n|------|------|------|------|\n';
+  var allCats = {};
+  ['cur','lm','ly'].forEach(function (p) { Object.keys(s.byCategory[p]).forEach(function (k) { allCats[k] = true; }); });
+  Object.keys(allCats).sort(function (a, b) {
+    return (s.byCategory.cur[b]||0) - (s.byCategory.cur[a]||0);
+  }).forEach(function (c) {
+    md += '| ' + c + ' | ' + (s.byCategory.cur[c]||0) + ' | ' + (s.byCategory.lm[c]||0) + ' | ' + (s.byCategory.ly[c]||0) + ' |\n';
+  });
+
+  md += '\n## 發生單位（本期）\n\n' + _tableRows(s.byUnit.cur);
+  md += '\n\n## SAC 分級（本期）\n\n' + _tableRows(s.sac.cur);
+  md += '\n\n## 嚴重程度（本期）\n\n' + _tableRows(s.bySeverity.cur);
+  md += '\n\n## 發生階段（本期）\n\n' + _tableRows(s.byStage.cur);
+  md += '\n\n## 發生主原因（本期）\n\n' + _tableRows(s.byCause.cur);
+  md += '\n\n## 通報者身分（本期）\n\n' + _tableRows(s.byReporter.cur);
+  md += '\n\n## 通報意願（本期）\n\n' + _tableRows(s.byWillingness.cur);
+  md += '\n\n---\n*由病人安全事件通報儀表板匯出 · ' + new Date().toISOString().slice(0,10) + '*\n';
+
+  downloadFile(md, 'incident_summary_' + s.period.start + '_' + s.period.end + '.md', 'text/markdown');
+}
+
+function exportNblmCsv() {
+  var f = getFilters();
+  if (!f.start || !f.end) { alert('請先選擇日期範圍'); return; }
+  var cur = filterRows(RAW, f.start, f.end);
+  if (cur.length === 0) { alert('目前篩選範圍無資料'); return; }
+
+  var headers = [COL.date, COL.category, COL.unit, COL.stage, COL.cause, COL.subCause,
+                 COL.severity, COL.sac, COL.freq, COL.tube, COL.restraint, COL.reintub,
+                 COL.reporter, COL.willingness];
+  function esc(v) {
+    var s = String(v == null ? '' : v);
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+  var csv = '\ufeff' + headers.map(esc).join(',') + '\n';
+  cur.forEach(function (r) {
+    csv += headers.map(function (h) { return esc(r[h]); }).join(',') + '\n';
+  });
+
+  downloadFile(csv, 'incident_data_' + fmtDate(f.start) + '_' + fmtDate(f.end) + '.csv', 'text/csv');
 }
 
 // ====== 啟動 ======
