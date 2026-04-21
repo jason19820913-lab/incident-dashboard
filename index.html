@@ -189,7 +189,7 @@
 <body>
 
 <h1 id="page-title">病人安全事件通報儀表板</h1>
-<div class="subtitle" id="page-subtitle">可依日期 × 單位 × 嚴重程度 × 通報者 × 事件類別篩選，並與上月、去年同期比較</div>
+<div class="subtitle" id="page-subtitle">可依日期 × 單位 × 嚴重程度 × SAC 分級 × 通報者 × 事件類別篩選，並與上月、去年同期比較</div>
 
 <div class="toolbar">
   <button type="button" class="btn primary" onclick="refresh()">套用篩選</button>
@@ -220,6 +220,7 @@
   <div class="field"><label>事件類別</label><div class="multi-select" id="ms-category"></div></div>
   <div class="field"><label>發生單位</label><div class="multi-select" id="ms-unit"></div></div>
   <div class="field"><label>嚴重程度</label><div class="multi-select" id="ms-severity"></div></div>
+  <div class="field"><label>SAC 分級</label><div class="multi-select" id="ms-sac"></div></div>
   <div class="field"><label>通報者身分</label><div class="multi-select" id="ms-reporter"></div></div>
 </div>
 
@@ -430,9 +431,9 @@ var TUBE_ABNORMAL = ['腫脹', '滲漏', '阻塞', '自拔', '滑脫'];
 // ====== 全域狀態 ======
 var RAW = [];
 var FILTERS = {
-  cats: {}, units: {}, severities: {}, reporters: {}
+  cats: {}, units: {}, severities: {}, reporters: {}, sacs: {}
 };
-var CATEGORIES = [], UNITS = [], SEVERITIES = [], REPORTERS = [];
+var CATEGORIES = [], UNITS = [], SEVERITIES = [], REPORTERS = [], SACS = [];
 var CHARTS = {};
 
 function $(id) { return document.getElementById(id); }
@@ -556,32 +557,48 @@ function diagnoseData() {
 
 // ====== 多選 filter ======
 function buildFilters() {
-  var cats = {}, units = {}, sevs = {}, reps = {};
+  var cats = {}, units = {}, sevs = {}, reps = {}, sacs = {};
   RAW.forEach(function (r) {
     // 空值統一收斂為 (未填)，讓使用者可以選擇是否包含
     cats[normKey(r[COL.category])]  = true;
     units[normKey(r[COL.unit])]     = true;
     sevs[normKey(r[COL.severity])]  = true;
     reps[normKey(r[COL.reporter])]  = true;
+    sacs[normKey(r[COL.sac])]       = true;
   });
   // (未填) 排到最前面，其餘按字串排序
   function sortWithEmptyFirst(arr) {
     var rest = arr.filter(function(x){ return x !== EMPTY_KEY; }).sort();
     return arr.indexOf(EMPTY_KEY) >= 0 ? [EMPTY_KEY].concat(rest) : rest;
   }
+  // SAC 依數字順序排（SAC1→SAC5），非 SAC 的值依字串排
+  function sortSac(arr) {
+    var empty = arr.indexOf(EMPTY_KEY) >= 0 ? [EMPTY_KEY] : [];
+    var rest = arr.filter(function(x){ return x !== EMPTY_KEY; });
+    rest.sort(function (a, b) {
+      function num(s) { var m = /(\d+)/.exec(String(s)); return m ? parseInt(m[1], 10) : 999; }
+      var na = num(a), nb = num(b);
+      if (na !== nb) return na - nb;
+      return String(a).localeCompare(String(b));
+    });
+    return empty.concat(rest);
+  }
   CATEGORIES = sortWithEmptyFirst(Object.keys(cats));
   UNITS      = sortWithEmptyFirst(Object.keys(units));
   SEVERITIES = sortWithEmptyFirst(Object.keys(sevs));
   REPORTERS  = sortWithEmptyFirst(Object.keys(reps));
+  SACS       = sortSac(Object.keys(sacs));
 
   FILTERS.cats = {}; CATEGORIES.forEach(function(c){ FILTERS.cats[c] = true; });
   FILTERS.units = {}; UNITS.forEach(function(u){ FILTERS.units[u] = true; });
   FILTERS.severities = {}; SEVERITIES.forEach(function(s){ FILTERS.severities[s] = true; });
   FILTERS.reporters = {}; REPORTERS.forEach(function(r){ FILTERS.reporters[r] = true; });
+  FILTERS.sacs = {}; SACS.forEach(function(s){ FILTERS.sacs[s] = true; });
 
   renderMulti('ms-category', CATEGORIES, FILTERS.cats, '類別');
   renderMulti('ms-unit',     UNITS,      FILTERS.units, '單位');
   renderMulti('ms-severity', SEVERITIES, FILTERS.severities, '嚴重程度');
+  renderMulti('ms-sac',      SACS,       FILTERS.sacs, 'SAC 分級');
   renderMulti('ms-reporter', REPORTERS,  FILTERS.reporters, '通報者');
 }
 
@@ -638,6 +655,7 @@ function msAll(containerId, val) {
     'ms-category': {items: CATEGORIES, sel: FILTERS.cats, name: '類別'},
     'ms-unit':     {items: UNITS,      sel: FILTERS.units, name: '單位'},
     'ms-severity': {items: SEVERITIES, sel: FILTERS.severities, name: '嚴重程度'},
+    'ms-sac':      {items: SACS,       sel: FILTERS.sacs, name: 'SAC 分級'},
     'ms-reporter': {items: REPORTERS,  sel: FILTERS.reporters, name: '通報者'}
   };
   var cfg = map[containerId];
@@ -685,6 +703,7 @@ function filterRows(rows, start, end, opts) {
     if (!opts.skipCat && CATEGORIES.length && !FILTERS.cats[normKey(r[COL.category])]) return false;
     if (!opts.skipUnit && UNITS.length && !FILTERS.units[normKey(r[COL.unit])]) return false;
     if (!opts.skipSev && SEVERITIES.length && !FILTERS.severities[normKey(r[COL.severity])]) return false;
+    if (!opts.skipSac && SACS.length && !FILTERS.sacs[normKey(r[COL.sac])]) return false;
     if (!opts.skipRep && REPORTERS.length && !FILTERS.reporters[normKey(r[COL.reporter])]) return false;
     return true;
   });
