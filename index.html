@@ -1347,12 +1347,21 @@ function aiCall(type, question) {
   aiShowOut(loadingMsg, 'loading');
   aiDisableButtons(true);
 
-  var params = 'action=gemini' +
-    '&type=' + encodeURIComponent(type) +
-    '&summary=' + encodeURIComponent(JSON.stringify(summary));
-  if (question) params += '&q=' + encodeURIComponent(question);
+  // 用 POST + text/plain（CORS-simple 請求，不觸發 preflight）
+  // 將 summary JSON 放在 body，避免 GET URL 過長
+  var body = {
+    action: 'gemini',
+    type: type,
+    summary: JSON.stringify(summary)
+  };
+  if (question) body.q = question;
 
-  fetch(API_URL + '?' + params)
+  fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body),
+    redirect: 'follow'
+  })
     .then(function (r) { return r.json(); })
     .then(function (res) {
       aiDisableButtons(false);
@@ -1367,7 +1376,7 @@ function aiCall(type, question) {
     })
     .catch(function (err) {
       aiDisableButtons(false);
-      aiShowOut('❌ 連線失敗：' + err.message, 'error');
+      aiShowOut('❌ 連線失敗：' + err.message + '\n\n可能原因：\n1. Apps Script 尚未重新部署（需用「管理部署作業 → 編輯 → 新版本」更新）\n2. GEMINI_API_KEY 尚未設定在指令碼屬性\n3. 網路或瀏覽器擋住請求', 'error');
     });
 }
 
