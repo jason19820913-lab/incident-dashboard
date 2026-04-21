@@ -139,6 +139,12 @@
   .ai-a { background: linear-gradient(#f0f9ff, #fafafa); border-left: 3px solid #4285f4; padding: 12px 14px; border-radius: 0 8px 8px 0; font-size: 14px; line-height: 1.75; white-space: pre-wrap; word-break: break-word; }
   .ai-a::before { content: '🤖 '; }
   .ai-footer { font-size: 11px; color: #9ca3af; margin-top: 6px; }
+  .ai-key-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 12px; font-size: 13px; }
+  .ai-key-status { color: #374151; }
+  .ai-key-status b { color: #059669; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .ai-key-status.missing b { color: #b91c1c; }
+  .ai-key-hint { font-size: 11px; color: #6b7280; }
+  .ai-key-hint a { color: #2563eb; text-decoration: underline; }
 
   /* 列印時隱藏 AI 面板 */
   @media print {
@@ -286,6 +292,12 @@
 <div class="ai-panel" id="ai-panel">
   <h3>🤖 AI 智能分析 <span style="font-size:12px; font-weight:400; color:#6b7280;">by Google Gemini</span></h3>
   <p class="desc">AI 會依目前篩選範圍的資料進行分析，自動排除未篩選到的事件。</p>
+  <div class="ai-key-row">
+    <span id="ai-key-status" class="ai-key-status missing">🔑 個人 API 金鑰：<b>尚未設定</b></span>
+    <button type="button" class="ai-btn" onclick="promptAiKey()">設定 / 更換金鑰</button>
+    <button type="button" class="ai-btn" onclick="clearAiKey()" id="ai-key-clear" style="display:none;">清除金鑰</button>
+    <span class="ai-key-hint">金鑰只儲存在你的瀏覽器（localStorage），不會上傳。免費取得 → <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a></span>
+  </div>
   <div class="ai-actions">
     <button type="button" class="ai-btn primary" onclick="aiAnalyze()">📊 自動數據剖析</button>
     <button type="button" class="ai-btn primary" onclick="aiSuggest()">💡 改善對策建議</button>
@@ -302,14 +314,15 @@
 
 <!-- ====== NotebookLM 整合 ====== -->
 <div class="ai-panel" id="nblm-panel">
-  <h3>📓 NotebookLM 整合</h3>
-  <p class="desc">將目前篩選範圍的資料匯出為 Markdown / CSV，可上傳到 NotebookLM 作為知識來源，進行多源文件 AI 問答。</p>
+  <h3>📓 NotebookLM 整合 <span style="font-size:12px; font-weight:400; color:#6b7280;">連結：企劃室管理知識庫</span></h3>
+  <p class="desc">將目前篩選範圍的資料匯出為 Markdown / CSV，上傳到「企劃室管理知識庫」作為來源，就能結合既有規章制度、會議記錄等資料做跨源 AI 問答。</p>
   <div class="ai-actions">
     <button type="button" class="ai-btn" onclick="exportNblmMd()">📄 匯出摘要 (.md)</button>
     <button type="button" class="ai-btn" onclick="exportNblmCsv()">📊 匯出明細 (.csv)</button>
-    <button type="button" class="ai-btn success" onclick="window.open('https://notebooklm.google.com/','_blank')">🚀 開啟 NotebookLM</button>
+    <button type="button" class="ai-btn success" onclick="window.open('https://notebooklm.google.com/notebook/1edb29c1-7c97-4ece-8ab0-f3df3616d6f3','_blank')">🚀 開啟 企劃室管理知識庫</button>
+    <button type="button" class="ai-btn" onclick="window.open('https://notebooklm.google.com/','_blank')">NotebookLM 首頁</button>
   </div>
-  <div class="ai-footer">提示：進入 NotebookLM → 建立筆記本 → 新增來源 → 上傳剛才下載的 .md / .csv 檔即可開始 AI 問答。</div>
+  <div class="ai-footer">提示：進入知識庫 → 右上「+ 新增」→ 選擇剛匯出的 .md / .csv 檔 → 回到聊天框即可跨來源提問（例如：「比較本月跌倒事件與上次品管會議提到的改善對策」）。</div>
 </div>
 
 <!-- ====== 月報模式（靜態） ====== -->
@@ -1309,6 +1322,59 @@ function buildAiSummary() {
   };
 }
 
+// ====== AI 個人金鑰（localStorage，每裝置獨立）======
+var AI_KEY_STORAGE = 'gemini_api_key';
+function getAiKey() {
+  try { return (localStorage.getItem(AI_KEY_STORAGE) || '').trim(); } catch (e) { return ''; }
+}
+function setAiKey(k) {
+  try { localStorage.setItem(AI_KEY_STORAGE, String(k || '').trim()); } catch (e) {}
+  updateAiKeyStatus();
+}
+function clearAiKey() {
+  try { localStorage.removeItem(AI_KEY_STORAGE); } catch (e) {}
+  updateAiKeyStatus();
+  aiShowOut('🔑 已清除個人 API 金鑰。下次 AI 分析將改用伺服器預設金鑰（若已設定），否則需重新輸入。', '');
+}
+function maskKey(k) {
+  if (!k) return '尚未設定';
+  if (k.length <= 8) return '••••' + k.slice(-2);
+  return k.slice(0, 4) + '••••' + k.slice(-4);
+}
+function updateAiKeyStatus() {
+  var el = $('ai-key-status');
+  if (!el) return;
+  var k = getAiKey();
+  var clr = $('ai-key-clear');
+  if (k) {
+    el.classList.remove('missing');
+    el.innerHTML = '🔑 個人 API 金鑰：<b>' + maskKey(k) + '</b>';
+    if (clr) clr.style.display = '';
+  } else {
+    el.classList.add('missing');
+    el.innerHTML = '🔑 個人 API 金鑰：<b>尚未設定</b>';
+    if (clr) clr.style.display = 'none';
+  }
+}
+function promptAiKey() {
+  var cur = getAiKey();
+  var msg = '請輸入你的 Gemini API Key：\n\n' +
+            '• 免費取得：https://aistudio.google.com/app/apikey\n' +
+            '• 金鑰只存在這個瀏覽器（localStorage），不會上傳到其他地方\n' +
+            '• 每個裝置 / 瀏覽器都要各自設定一次\n' +
+            (cur ? '\n目前金鑰：' + maskKey(cur) + '（如不更換請按取消）' : '');
+  var k = window.prompt(msg, cur || '');
+  if (k === null) return;       // 取消
+  k = String(k).trim();
+  if (!k) { clearAiKey(); return; }
+  if (k.length < 20) {
+    alert('金鑰長度不足，請確認貼上完整 API Key');
+    return;
+  }
+  setAiKey(k);
+  aiShowOut('✅ 個人 API 金鑰已儲存（只存在此瀏覽器）。現在可以使用 AI 分析了。', '');
+}
+
 function aiShowOut(text, klass) {
   var el = $('ai-output');
   el.className = 'ai-output' + (klass ? ' ' + klass : '');
@@ -1355,6 +1421,9 @@ function aiCall(type, question) {
     summary: JSON.stringify(summary)
   };
   if (question) body.q = question;
+  // 優先用使用者自己的金鑰（此裝置 localStorage），後端沒設定伺服器金鑰時必須要有
+  var personalKey = getAiKey();
+  if (personalKey) body.apiKey = personalKey;
 
   fetch(API_URL, {
     method: 'POST',
@@ -1365,7 +1434,15 @@ function aiCall(type, question) {
     .then(function (r) { return r.json(); })
     .then(function (res) {
       aiDisableButtons(false);
-      if (res.error) { aiShowOut('❌ ' + res.error, 'error'); return; }
+      if (res.error) {
+        var emsg = '❌ ' + res.error;
+        // 後端回報沒有金鑰 → 引導使用者設定個人金鑰
+        if (/api\s*key|金鑰|GEMINI_API_KEY/i.test(res.error) && !getAiKey()) {
+          emsg += '\n\n👉 請點上方「🔑 設定 / 更換金鑰」輸入你自己的 Gemini API Key（免費取得：https://aistudio.google.com/app/apikey）';
+        }
+        aiShowOut(emsg, 'error');
+        return;
+      }
       var text = res.text || '(空回覆)';
       if (question) {
         aiAddHistory(question, text);
@@ -1376,7 +1453,7 @@ function aiCall(type, question) {
     })
     .catch(function (err) {
       aiDisableButtons(false);
-      aiShowOut('❌ 連線失敗：' + err.message + '\n\n可能原因：\n1. Apps Script 尚未重新部署（需用「管理部署作業 → 編輯 → 新版本」更新）\n2. GEMINI_API_KEY 尚未設定在指令碼屬性\n3. 網路或瀏覽器擋住請求', 'error');
+      aiShowOut('❌ 連線失敗：' + err.message + '\n\n可能原因：\n1. Apps Script 尚未重新部署（需用「管理部署作業 → 編輯 → 新版本」更新）\n2. 個人 API 金鑰未設定（請按上方「🔑 設定 / 更換金鑰」）或伺服器 GEMINI_API_KEY 未設定\n3. 網路或瀏覽器擋住請求', 'error');
     });
 }
 
@@ -1394,10 +1471,11 @@ function aiClear() {
   $('ai-output').className = 'ai-output empty';
 }
 
-// Enter 鍵送出
+// Enter 鍵送出 + 初始化金鑰狀態
 document.addEventListener('DOMContentLoaded', function () {
   var q = $('ai-q');
   if (q) q.addEventListener('keydown', function (e) { if (e.key === 'Enter') aiAsk(); });
+  updateAiKeyStatus();
 });
 
 // ====== NotebookLM 匯出 ======
