@@ -399,6 +399,18 @@ function escapeHtml(s) {
   });
 }
 
+// 強化版 trim：包含全形空白 U+3000、不換行空格 U+00A0、零寬空格 U+200B、BOM 等
+function strongTrim(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/^[\s\u3000\u00a0\u200b\ufeff]+|[\s\u3000\u00a0\u200b\ufeff]+$/g, '');
+}
+// 用來當作 key 的標準化：空值統一為「(未填)」
+var EMPTY_KEY = '(未填)';
+function normKey(v) {
+  var s = strongTrim(v);
+  return s || EMPTY_KEY;
+}
+
 function setStatus(html, type) {
   var s = $('status');
   if (!html) { s.innerHTML = ''; return; }
@@ -448,15 +460,21 @@ function diagnoseData() {
 function buildFilters() {
   var cats = {}, units = {}, sevs = {}, reps = {};
   RAW.forEach(function (r) {
-    if (r[COL.category]) cats[String(r[COL.category]).trim()] = true;
-    if (r[COL.unit])     units[String(r[COL.unit]).trim()] = true;
-    if (r[COL.severity]) sevs[String(r[COL.severity]).trim()] = true;
-    if (r[COL.reporter]) reps[String(r[COL.reporter]).trim()] = true;
+    // 空值統一收斂為 (未填)，讓使用者可以選擇是否包含
+    cats[normKey(r[COL.category])]  = true;
+    units[normKey(r[COL.unit])]     = true;
+    sevs[normKey(r[COL.severity])]  = true;
+    reps[normKey(r[COL.reporter])]  = true;
   });
-  CATEGORIES = Object.keys(cats).sort();
-  UNITS      = Object.keys(units).sort();
-  SEVERITIES = Object.keys(sevs).sort();
-  REPORTERS  = Object.keys(reps).sort();
+  // (未填) 排到最前面，其餘按字串排序
+  function sortWithEmptyFirst(arr) {
+    var rest = arr.filter(function(x){ return x !== EMPTY_KEY; }).sort();
+    return arr.indexOf(EMPTY_KEY) >= 0 ? [EMPTY_KEY].concat(rest) : rest;
+  }
+  CATEGORIES = sortWithEmptyFirst(Object.keys(cats));
+  UNITS      = sortWithEmptyFirst(Object.keys(units));
+  SEVERITIES = sortWithEmptyFirst(Object.keys(sevs));
+  REPORTERS  = sortWithEmptyFirst(Object.keys(reps));
 
   FILTERS.cats = {}; CATEGORIES.forEach(function(c){ FILTERS.cats[c] = true; });
   FILTERS.units = {}; UNITS.forEach(function(u){ FILTERS.units[u] = true; });
@@ -566,10 +584,10 @@ function filterRows(rows, start, end, opts) {
     if (!d) return false;
     if (start && d < start) return false;
     if (end && d > end) return false;
-    if (!opts.skipCat && CATEGORIES.length && !FILTERS.cats[String(r[COL.category]||'').trim()]) return false;
-    if (!opts.skipUnit && UNITS.length && !FILTERS.units[String(r[COL.unit]||'').trim()]) return false;
-    if (!opts.skipSev && SEVERITIES.length && !FILTERS.severities[String(r[COL.severity]||'').trim()]) return false;
-    if (!opts.skipRep && REPORTERS.length && !FILTERS.reporters[String(r[COL.reporter]||'').trim()]) return false;
+    if (!opts.skipCat && CATEGORIES.length && !FILTERS.cats[normKey(r[COL.category])]) return false;
+    if (!opts.skipUnit && UNITS.length && !FILTERS.units[normKey(r[COL.unit])]) return false;
+    if (!opts.skipSev && SEVERITIES.length && !FILTERS.severities[normKey(r[COL.severity])]) return false;
+    if (!opts.skipRep && REPORTERS.length && !FILTERS.reporters[normKey(r[COL.reporter])]) return false;
     return true;
   });
 }
