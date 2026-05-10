@@ -152,6 +152,31 @@
   .ai-key-hint { font-size: 11px; color: #6b7280; }
   .ai-key-hint a { color: #2563eb; text-decoration: underline; }
 
+  /* ========== 鑽研篩選（點擊圖表交叉篩選）========== */
+  #drilldown-chips {
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+    padding: 8px 12px; margin-bottom: 12px;
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    font-size: 13px;
+  }
+  .drill-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #fef3c7; border: 1px solid #f59e0b;
+    padding: 3px 6px 3px 10px; border-radius: 999px;
+    color: #78350f; font-weight: 500;
+  }
+  .drill-chip b { color: #92400e; font-weight: 700; margin-left: 2px; }
+  .drill-chip button {
+    background: none; border: none; font-size: 14px; line-height: 1;
+    cursor: pointer; color: #92400e; padding: 0 4px; margin-left: 2px;
+    border-radius: 50%;
+  }
+  .drill-chip button:hover { background: rgba(146,64,14,0.15); }
+  .chart-card .chart-box canvas { cursor: pointer; }   /* 提示可點 */
+  table.cross td.num.cell-multi { cursor: pointer; }
+  table.cross td.num { cursor: pointer; }
+  table.cross td.rowh, table.cross td.total { cursor: default; }
+
   /* 列印時隱藏 AI 面板 */
   @media print {
     .ai-panel { display: none !important; }
@@ -226,9 +251,26 @@
 
 <div id="status"></div>
 
+<!-- 圖表鑽研條件（點圖卡產生的篩選） -->
+<div id="drilldown-chips" style="display:none;"></div>
+
 <!-- ====== 儀表板區 ====== -->
 <div id="dashboard">
   <div id="kpi-grid" class="kpi-grid"></div>
+
+  <!-- 標準化指標率（依分母計算每千人日 / 千張處方率） -->
+  <div class="card chart-card" style="margin-bottom:12px;">
+    <h3 style="margin:0 0 10px;font-size:14px;color:#374151;font-weight:600;">📊 標準化指標率（每千人日／千張處方）<span id="rate-period-label" style="font-weight:400;color:#9ca3af;font-size:12px;margin-left:8px;"></span></h3>
+    <div id="rate-grid" class="kpi-grid" style="margin-bottom:0;"></div>
+    <div id="rate-warning" style="font-size:12px;color:#9ca3af;margin-top:8px;"></div>
+  </div>
+
+  <!-- 通報文化健康度 -->
+  <div class="card chart-card" style="margin-bottom:12px;">
+    <h3 style="margin:0 0 10px;font-size:14px;color:#374151;font-weight:600;">🌱 通報文化健康度</h3>
+    <div id="culture-grid" class="kpi-grid" style="margin-bottom:0;"></div>
+    <div style="font-size:12px;color:#9ca3af;margin-top:8px;">說明：跡近錯失比值越高代表「在傷害發生前就攔截下來」越成功；通報多樣性高代表非單一職類在通報，文化較成熟。</div>
+  </div>
 
   <div class="chart-grid">
     <div class="card chart-card c-full">
@@ -275,22 +317,22 @@
       <div class="chart-box"><canvas id="chart-stage"></canvas></div>
     </div>
 
-    <div class="card chart-card c-half">
-      <h3>發生主原因 Top 10</h3>
-      <div class="chart-box"><canvas id="chart-cause"></canvas></div>
+    <div class="card chart-card c-full">
+      <h3>發生主原因 Top 10（柏拉圖：累積至 80% 是優先處理目標）</h3>
+      <div class="chart-box tall"><canvas id="chart-cause"></canvas></div>
     </div>
     <div class="card chart-card c-half">
       <h3>SAC 分級分布</h3>
       <div class="chart-box"><canvas id="chart-sac"></canvas></div>
     </div>
-
     <div class="card chart-card c-half">
       <h3>嚴重程度</h3>
       <div class="chart-box"><canvas id="chart-severity"></canvas></div>
     </div>
-    <div class="card chart-card c-half">
+
+    <div class="card chart-card c-full">
       <h3>發生單位 Top 10</h3>
-      <div class="chart-box"><canvas id="chart-unit"></canvas></div>
+      <div class="chart-box tall"><canvas id="chart-unit"></canvas></div>
     </div>
   </div>
 </div>
@@ -430,11 +472,43 @@ var TUBE_ABNORMAL = ['腫脹', '滲漏', '阻塞', '自拔', '滑脫'];
 
 // ====== 全域狀態 ======
 var RAW = [];
+var DENOM = [];                 // 指標分母（每月一筆）
+var DENOM_BY_MONTH = {};        // { 'YYYY-MM': {欄位: 數值} }
 var FILTERS = {
   cats: {}, units: {}, severities: {}, reporters: {}, sacs: {}
 };
 var CATEGORIES = [], UNITS = [], SEVERITIES = [], REPORTERS = [], SACS = [];
 var CHARTS = {};
+
+// 圖表鑽研篩選：點擊圖表元素產生的暫時篩選，獨立於上方 checkbox 篩選
+// 結構：{ '事件類別': '管路事件', '發生單位': '三樓內科', ... }
+// 同時可有多個欄位的條件，它們之間是 AND
+var DRILLDOWN = {};
+
+// 單位名稱正規化：歷史上的「外科加護病房」「內科加護病房」後來改為「綜合科加護病房」
+// 為了讓跨年度趨勢圖不斷裂，預設合併。若想保留原樣可把 NORMALIZE_UNITS 設為 false。
+var NORMALIZE_UNITS = true;
+var UNIT_ALIAS = {
+  '外科加護病房': '綜合科加護病房',
+  '內科加護病房': '綜合科加護病房'
+};
+function normalizeUnit(name) {
+  if (!NORMALIZE_UNITS) return name;
+  var n = strongTrim(name);
+  return UNIT_ALIAS[n] || n;
+}
+
+// 分母欄位對應到中文標籤與計算邏輯所需 key
+var DENOM_KEYS = {
+  outpatientRx: '門診處方簽數',
+  inpatientRx:  '住院處方簽數',
+  erRx:         '急診處方簽數',
+  wardDays:     '一般病房住院人日',
+  icuDays:      '綜合科加護病房住院人日',
+  cvpDays:      '中心靜脈導管使用日數',
+  foleyDays:    '導尿管使用天數',
+  ettDays:      '氣管內管使用天數'
+};
 
 function $(id) { return document.getElementById(id); }
 
@@ -522,16 +596,90 @@ function reloadData() {
     setStatus('⚠️ 尚未設定 API_URL', 'error'); return;
   }
   setStatus('載入中...', 'loading');
-  fetch(API_URL + '?action=getData')
+  // 一次抓事件 + 分母（向後相容：分母分頁不存在時 events 仍能正常）
+  fetch(API_URL + '?action=getAll')
     .then(function (r) { return r.json(); })
     .then(function (res) {
       if (res.error) { setStatus('載入失敗：' + res.error, 'error'); return; }
-      RAW = res.data || [];
+      var ev = res.events || res;             // 相容舊版只回傳事件的情況
+      var dn = res.denominators || { data: [] };
+      if (ev && ev.error) { setStatus('載入失敗：' + ev.error, 'error'); return; }
+      RAW = (ev && ev.data) || [];
+      // 套用單位正規化（歷史 ICU 名稱合併）
+      if (NORMALIZE_UNITS) {
+        RAW.forEach(function (r) {
+          if (r[COL.unit]) r[COL.unit] = normalizeUnit(r[COL.unit]);
+        });
+      }
+      DENOM = (dn && dn.data) || [];
+      buildDenomIndex();
       buildFilters();
       diagnoseData();
       refresh();
     })
     .catch(function (err) { setStatus('載入失敗：' + err.message, 'error'); });
+}
+
+// 建立 { 'YYYY-MM': {分母欄位: 數值} } 索引；分母「日期」欄可能是 YYYY-MM、YYYY/MM、YYYY/MM/DD
+function buildDenomIndex() {
+  DENOM_BY_MONTH = {};
+  DENOM.forEach(function (row) {
+    var dateRaw = row['日期'];
+    var ym = parseDenomMonth(dateRaw);
+    if (!ym) return;
+    var clean = {};
+    Object.keys(row).forEach(function (k) {
+      if (k === '日期') return;
+      var v = row[k];
+      // 數字保留為數字、空白視為 null
+      if (v === '' || v === null || v === undefined) { clean[k] = null; return; }
+      var n = (typeof v === 'number') ? v : parseFloat(String(v).replace(/,/g, ''));
+      clean[k] = isNaN(n) ? null : n;
+    });
+    DENOM_BY_MONTH[ym] = clean;
+  });
+}
+
+function parseDenomMonth(v) {
+  if (v === null || v === undefined || v === '') return null;
+  var s = String(v).trim();
+  // 形如 2026-01 或 2026/01 或 2026/1
+  var m1 = s.match(/^(\d{4})[-\/](\d{1,2})$/);
+  if (m1) return m1[1] + '-' + String(parseInt(m1[2],10)).padStart(2,'0');
+  // 形如 2026/01/15 或 2026-01-15
+  var m2 = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);
+  if (m2) return m2[1] + '-' + String(parseInt(m2[2],10)).padStart(2,'0');
+  // 退而求其次 try Date
+  var d = new Date(s);
+  if (!isNaN(d)) return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+  return null;
+}
+
+// 加總某段期間的某個分母欄位（以「年月」為單位累加）
+function sumDenom(start, end, denomKey) {
+  if (!start || !end) return null;
+  var total = 0, hasAny = false, missingMonths = [];
+  var y = start.getFullYear(), m = start.getMonth();
+  var endYM = end.getFullYear() * 12 + end.getMonth();
+  while (y * 12 + m <= endYM) {
+    var ym = y + '-' + String(m+1).padStart(2,'0');
+    var d = DENOM_BY_MONTH[ym];
+    if (d && d[denomKey] != null) {
+      total += d[denomKey];
+      hasAny = true;
+    } else {
+      missingMonths.push(ym);
+    }
+    m++;
+    if (m > 11) { m = 0; y++; }
+  }
+  return { total: hasAny ? total : null, missing: missingMonths };
+}
+
+// 計算每千的率值
+function ratePer1000(numerator, denomTotal) {
+  if (denomTotal == null || denomTotal === 0) return null;
+  return Math.round((numerator / denomTotal) * 1000 * 100) / 100; // 保留 2 位小數
 }
 
 function diagnoseData() {
@@ -705,8 +853,106 @@ function filterRows(rows, start, end, opts) {
     if (!opts.skipSev && SEVERITIES.length && !FILTERS.severities[normKey(r[COL.severity])]) return false;
     if (!opts.skipSac && SACS.length && !FILTERS.sacs[normKey(r[COL.sac])]) return false;
     if (!opts.skipRep && REPORTERS.length && !FILTERS.reporters[normKey(r[COL.reporter])]) return false;
+    // 圖表鑽研條件（點擊圖卡產生的暫時篩選，AND 邏輯）
+    if (!opts.skipDrill) {
+      for (var dk in DRILLDOWN) {
+        if (!Object.prototype.hasOwnProperty.call(DRILLDOWN, dk)) continue;
+        var want = DRILLDOWN[dk];
+        if (!want) continue;
+        var got = normKey(r[dk]);
+        if (got !== want) return false;
+      }
+    }
     return true;
   });
+}
+
+// ====== 圖表鑽研篩選 ======
+// 切換鑽研條件：同欄位同值再點 → 取消；其他情況 → 設定 / 覆寫該欄位
+function toggleDrillDown(colKey, value) {
+  if (!colKey || value == null) return;
+  var v = String(value);
+  if (DRILLDOWN[colKey] === v) {
+    delete DRILLDOWN[colKey];
+  } else {
+    DRILLDOWN[colKey] = v;
+  }
+  refresh();
+  renderDrillDownChips();
+}
+
+// 同時設定多個欄位（用於堆疊長條、矩陣格的雙欄位下鑽）
+function setDrillDownMulti(map) {
+  if (!map) return;
+  Object.keys(map).forEach(function (k) {
+    var v = map[k];
+    if (v == null || v === '') delete DRILLDOWN[k];
+    else DRILLDOWN[k] = String(v);
+  });
+  refresh();
+  renderDrillDownChips();
+}
+
+function clearDrillDown(colKey) {
+  if (colKey) delete DRILLDOWN[colKey];
+  else DRILLDOWN = {};
+  refresh();
+  renderDrillDownChips();
+}
+
+function renderDrillDownChips() {
+  var box = $('drilldown-chips');
+  if (!box) return;
+  var keys = Object.keys(DRILLDOWN).filter(function (k) { return DRILLDOWN[k]; });
+  if (keys.length === 0) {
+    box.innerHTML = '';
+    box.style.display = 'none';
+    return;
+  }
+  box.style.display = '';
+  var html = '<span style="font-weight:600;color:#78350f;">🔍 圖表鑽研篩選：</span>';
+  keys.forEach(function (k) {
+    var v = DRILLDOWN[k];
+    html += '<span class="drill-chip">' + escapeHtml(k) + '<b> = ' + escapeHtml(v) + '</b>' +
+      '<button type="button" title="移除此條件" onclick="clearDrillDown(\'' + k.replace(/'/g, "\\'") + '\')">✕</button></span>';
+  });
+  if (keys.length > 1) {
+    html += '<button type="button" class="btn" style="padding:4px 10px;font-size:12px;" onclick="clearDrillDown()">清除全部</button>';
+  }
+  html += '<span style="color:#78350f;font-size:11px;margin-left:6px;">提示：再次點擊相同元素可取消該條件</span>';
+  box.innerHTML = html;
+}
+
+// 通用：把「點擊長條/切片」事件轉為鑽研條件
+function makeChartClickHandler(colKey) {
+  return function (evt, elements, chart) {
+    if (!elements || !elements.length) return;
+    var idx = elements[0].index;
+    var label = chart.data.labels[idx];
+    if (label == null) return;
+    toggleDrillDown(colKey, String(label));
+  };
+}
+
+// 堆疊長條（通報者 × 事件類別）：同時設定 reporter 與 category
+function reporterCatClickHandler(evt, elements, chart) {
+  if (!elements || !elements.length) return;
+  var el = elements[0];
+  var reporter = chart.data.labels[el.index];
+  var category = chart.data.datasets[el.datasetIndex].label;
+  if (!reporter || !category) return;
+  // 若兩個都已是當前條件 → 全部取消；否則同時設定
+  if (DRILLDOWN[COL.reporter] === reporter && DRILLDOWN[COL.category] === category) {
+    delete DRILLDOWN[COL.reporter];
+    delete DRILLDOWN[COL.category];
+    refresh();
+    renderDrillDownChips();
+  } else {
+    var m = {};
+    m[COL.reporter] = reporter;
+    m[COL.category] = category;
+    setDrillDownMulti(m);
+  }
 }
 
 // ====== 主入口 ======
@@ -722,6 +968,8 @@ function refresh() {
   var ly = filterRows(RAW, lyR.s, lyR.e);
 
   renderKPIs(cur, lm, ly);
+  renderRateKPIs(cur, lm, ly, f);
+  renderCultureKPIs(cur, lm, ly);
   renderPeriodCompare(cur, lm, ly, f);
   renderCategoryCompareChart(cur, lm, ly);
   renderCategoryChart(cur);
@@ -729,11 +977,11 @@ function refresh() {
   renderSacMatrix(cur, 'sac-matrix');
   renderTubeSection(cur);
   renderReporterCatChart(cur);
-  renderBar('chart-stage', 'stage', sortedEntries(groupCount(cur, COL.stage)), '#16a34a', true);
-  renderBar('chart-cause', 'cause', sortedEntries(groupCount(cur, COL.cause), 10), '#dc2626', true);
-  renderBar('chart-sac', 'sac', sortedEntries(groupCount(cur, COL.sac)).sort(sacSort), '#7c3aed', false);
-  renderBar('chart-severity', 'severity', sortedEntries(groupCount(cur, COL.severity)), '#f59e0b', false);
-  renderBar('chart-unit', 'unit', sortedEntries(groupCount(cur, COL.unit), 10), '#0891b2', true);
+  renderBar('chart-stage', 'stage', sortedEntries(groupCount(cur, COL.stage)), '#16a34a', true, COL.stage);
+  renderParetoCause(cur);
+  renderBar('chart-sac', 'sac', sortedEntries(groupCount(cur, COL.sac)).sort(sacSort), '#7c3aed', false, COL.sac);
+  renderBar('chart-severity', 'severity', sortedEntries(groupCount(cur, COL.severity)), '#f59e0b', false, COL.severity);
+  renderBar('chart-unit', 'unit', sortedEntries(groupCount(cur, COL.unit), 10), '#0891b2', true, COL.unit);
 }
 
 function sacSort(a, b) {
@@ -819,6 +1067,220 @@ function renderKPIs(cur, lm, ly) {
   }).join('');
 }
 
+// ====== 率值 KPI（每千人日 / 千張處方）======
+// 設計：每張卡顯示「分子件數、分母總和、率值、MoM、YoY」
+function renderRateKPIs(cur, lm, ly, f) {
+  var grid = $('rate-grid');
+  if (!grid) return;
+  var lmR = { s: shiftMonths(f.start, -1), e: shiftMonths(f.end, -1) };
+  var lyR = { s: shiftYears(f.start, -1),  e: shiftYears(f.end, -1) };
+
+  // 標示分母涵蓋月份
+  var label = $('rate-period-label');
+  if (label) label.textContent = '本期 ' + fmtDate(f.start) + ' ~ ' + fmtDate(f.end);
+
+  // 各種「分子篩選」邏輯
+  function isFall(r)        { return /跌倒/.test(String(r[COL.category]||'')); }
+  function isMed(r)         { return /藥物/.test(String(r[COL.category]||'')); }
+  function isTube(r)        { return /管路/.test(String(r[COL.category]||'')); }
+  function isSelfPull(r)    { return /自拔/.test(String(r[COL.cause]||'')); }
+  function tubeMatches(types) {
+    var re = new RegExp(types.join('|'));
+    return function (r) { return isTube(r) && re.test(String(r[COL.tube]||'')); };
+  }
+
+  function countBy(rows, fn) { var n=0; rows.forEach(function(r){ if(fn(r)) n++; }); return n; }
+
+  // 定義所有率值指標
+  var indicators = [
+    {
+      label: '跌倒率（每千住院人日）',
+      tooltip: '分母：一般病房住院人日 + 綜合科加護病房住院人日',
+      filter: isFall,
+      denomKeys: [DENOM_KEYS.wardDays, DENOM_KEYS.icuDays],
+      unit: '‰'
+    },
+    {
+      label: '藥物事件率（每千張處方）',
+      tooltip: '分母：門診 + 住院 + 急診處方簽數',
+      filter: isMed,
+      denomKeys: [DENOM_KEYS.outpatientRx, DENOM_KEYS.inpatientRx, DENOM_KEYS.erRx],
+      unit: '‰'
+    },
+    {
+      label: '中心靜脈導管自拔率（每千 CVP 日）',
+      tooltip: '分子：管路事件 ∩ 中心靜脈導管 ∩ 自拔；分母：中心靜脈導管使用日數',
+      filter: function (r) { return tubeMatches(['中心靜脈'])(r) && isSelfPull(r); },
+      denomKeys: [DENOM_KEYS.cvpDays],
+      unit: '‰'
+    },
+    {
+      label: '導尿管事件率（每千導尿管日）',
+      tooltip: '分子：管路事件 ∩ 導尿管；分母：導尿管使用天數',
+      filter: function (r) { return tubeMatches(['導尿管'])(r); },
+      denomKeys: [DENOM_KEYS.foleyDays],
+      unit: '‰'
+    },
+    {
+      label: '氣管內管自拔率 UPP（每千插管日）',
+      tooltip: '分子：管路事件 ∩ 氣管內管 ∩ 自拔；分母：氣管內管使用天數',
+      filter: function (r) { return tubeMatches(['氣管內管'])(r) && isSelfPull(r); },
+      denomKeys: [DENOM_KEYS.ettDays],
+      unit: '‰'
+    }
+  ];
+
+  function denomSumOver(start, end, keys) {
+    var t = 0, miss = [], anyVal = false;
+    keys.forEach(function (k) {
+      var s = sumDenom(start, end, k);
+      if (s && s.total != null) { t += s.total; anyVal = true; }
+      if (s && s.missing && s.missing.length) miss = miss.concat(s.missing);
+    });
+    return { total: anyVal ? t : null, missing: miss };
+  }
+
+  var anyMissing = false;
+  var html = indicators.map(function (ind) {
+    var nCur = countBy(cur, ind.filter);
+    var nLm  = countBy(lm,  ind.filter);
+    var nLy  = countBy(ly,  ind.filter);
+    var dCur = denomSumOver(f.start, f.end, ind.denomKeys);
+    var dLm  = denomSumOver(lmR.s,   lmR.e, ind.denomKeys);
+    var dLy  = denomSumOver(lyR.s,   lyR.e, ind.denomKeys);
+
+    var rCur = ratePer1000(nCur, dCur.total);
+    var rLm  = ratePer1000(nLm,  dLm.total);
+    var rLy  = ratePer1000(nLy,  dLy.total);
+
+    if (dCur.missing.length) anyMissing = true;
+
+    function fmtRate(v) { return v == null ? '—' : v.toFixed(2) + ind.unit; }
+    function rateBadge(c, p) {
+      if (c == null || p == null) return '<span class="delta-flat">—</span>';
+      if (p === 0) return c === 0 ? '<span class="delta-flat">—</span>' : '<span class="delta-up">新指標</span>';
+      var d = c - p;
+      var pct = p === 0 ? 0 : Math.round((d/p)*1000)/10;
+      var sign = d>0 ? '▲' : (d<0 ? '▼' : '—');
+      var cls  = d>0 ? 'delta-up' : (d<0 ? 'delta-down' : 'delta-flat');
+      return '<span class="' + cls + '">' + sign + ' ' + Math.abs(pct) + '% (' + p.toFixed(2) + ind.unit + ')</span>';
+    }
+
+    var dLine = '';
+    if (dCur.total != null) {
+      dLine = '<div class="bd-item"><span class="bc">分子 / 分母</span><span class="bv">' + nCur + ' / ' + dCur.total.toLocaleString() + '</span></div>';
+    } else {
+      dLine = '<div class="bd-empty">⚠️ 此期分母資料缺漏（' + (dCur.missing.length ? dCur.missing.slice(0,3).join('、') + (dCur.missing.length>3?' ...':'') : '無') + '）</div>';
+    }
+
+    return '<div class="card kpi" title="' + escapeHtml(ind.tooltip) + '">' +
+      '<div class="label">' + escapeHtml(ind.label) + '</div>' +
+      '<div class="value">' + fmtRate(rCur) + '</div>' +
+      '<div class="deltas">' +
+        '<div class="delta"><span class="k">vs 上月同期</span>' + rateBadge(rCur, rLm) + '</div>' +
+        '<div class="delta"><span class="k">vs 去年同期</span>' + rateBadge(rCur, rLy) + '</div>' +
+      '</div>' +
+      '<div class="breakdown">' + dLine + '</div>' +
+    '</div>';
+  }).join('');
+
+  grid.innerHTML = html;
+
+  var warn = $('rate-warning');
+  if (warn) {
+    warn.textContent = anyMissing
+      ? '⚠️ 部分月份的分母尚未填寫，缺值月份的事件不會被列入率值計算。請至「指標分母」分頁補齊每月數值以利完整比對。'
+      : '✓ 本期分母完整。率值已標準化，可直接做月對月、年對年比較。';
+  }
+}
+
+// ====== 通報文化健康度 ======
+// 1) 跡近錯失比值：跡近錯失件數 / 總通報件數（理想 20% 以上代表早期攔截強）
+// 2) 通報多樣性：通報者身分類別數（值越大代表越多元職類在通報，文化越成熟）
+function renderCultureKPIs(cur, lm, ly) {
+  var grid = $('culture-grid');
+  if (!grid) return;
+
+  function nearMissCount(rows) {
+    var n = 0;
+    rows.forEach(function (r) {
+      var sev = String(r[COL.severity]||'');
+      var sac = String(r[COL.sac]||'');
+      if (/跡近|near/i.test(sev) || /^\s*5\s*$/.test(sac)) n++;
+    });
+    return n;
+  }
+  function reporterDiversity(rows) {
+    var set = {};
+    rows.forEach(function (r) {
+      var v = strongTrim(r[COL.reporter]);
+      if (v) set[v] = true;
+    });
+    return Object.keys(set).length;
+  }
+  function ratioPct(n, d) { return d ? Math.round(n/d*1000)/10 : null; }
+
+  var curNm = nearMissCount(cur), lmNm = nearMissCount(lm), lyNm = nearMissCount(ly);
+  var curRatio = ratioPct(curNm, cur.length);
+  var lmRatio  = ratioPct(lmNm,  lm.length);
+  var lyRatio  = ratioPct(lyNm,  ly.length);
+
+  var curDiv = reporterDiversity(cur), lmDiv = reporterDiversity(lm), lyDiv = reporterDiversity(ly);
+
+  function pctBadge(c, p, higherIsGood) {
+    if (c == null || p == null) return '<span class="delta-flat">—</span>';
+    var d = c - p;
+    var sign = d>0 ? '▲' : (d<0 ? '▼' : '—');
+    // 「跡近錯失比」是越高越好；多樣性也是越高越好 → higherIsGood = true
+    var goodUp = !!higherIsGood;
+    var cls = d===0 ? 'delta-flat' : ((d>0) === goodUp ? 'delta-down' : 'delta-up');
+    // 注意 delta-down 是綠色（好），delta-up 是紅色（壞）→ 這裡反過來用是因為 higherIsGood
+    return '<span class="' + cls + '">' + sign + ' ' + Math.abs(d).toFixed(1) + ' (' + (p == null ? '—' : p) + ')</span>';
+  }
+
+  var ratioCard = '<div class="card kpi" title="跡近錯失（near miss）佔總通報的比值。越高代表系統在傷害發生前的攔截力越強，是 Just Culture 與通報文化成熟度的關鍵指標。">' +
+    '<div class="label">跡近錯失比值</div>' +
+    '<div class="value">' + (curRatio == null ? '—' : curRatio + '%') + '</div>' +
+    '<div class="deltas">' +
+      '<div class="delta"><span class="k">vs 上月同期</span>' + pctBadge(curRatio, lmRatio, true) + '</div>' +
+      '<div class="delta"><span class="k">vs 去年同期</span>' + pctBadge(curRatio, lyRatio, true) + '</div>' +
+    '</div>' +
+    '<div class="breakdown"><div class="bd-item"><span class="bc">跡近錯失 / 總件數</span><span class="bv">' + curNm + ' / ' + cur.length + '</span></div>' +
+    '<div class="bd-item" style="font-size:10px;color:#9ca3af"><span class="bc">健康區間參考</span><span class="bv">≥ 30%</span></div></div>' +
+  '</div>';
+
+  var diversityCard = '<div class="card kpi" title="本期出現過的「通報者身分」類別數。越多代表跨職類都在通報，文化越平衡。若長期只有護理人員通報，需檢視醫師與其他職類的通報意願。">' +
+    '<div class="label">通報多樣性（職類數）</div>' +
+    '<div class="value">' + curDiv + '</div>' +
+    '<div class="deltas">' +
+      '<div class="delta"><span class="k">vs 上月同期</span>' + pctBadge(curDiv, lmDiv, true) + '</div>' +
+      '<div class="delta"><span class="k">vs 去年同期</span>' + pctBadge(curDiv, lyDiv, true) + '</div>' +
+    '</div>' +
+  '</div>';
+
+  // 自主通報率（不含「第二或第三人把關」「病人或家屬告知」）
+  function selfReportPct(rows) {
+    if (!rows.length) return null;
+    var n = 0;
+    rows.forEach(function (r) {
+      if (/自主/.test(String(r[COL.willingness]||''))) n++;
+    });
+    return Math.round(n / rows.length * 1000) / 10;
+  }
+  var curSr = selfReportPct(cur), lmSr = selfReportPct(lm), lySr = selfReportPct(ly);
+
+  var selfReportCard = '<div class="card kpi" title="主動通報（非他人告知）的占比。越高代表員工願意承認異常並通報，反映 Just Culture 落地程度。">' +
+    '<div class="label">自主通報率</div>' +
+    '<div class="value">' + (curSr == null ? '—' : curSr + '%') + '</div>' +
+    '<div class="deltas">' +
+      '<div class="delta"><span class="k">vs 上月同期</span>' + pctBadge(curSr, lmSr, true) + '</div>' +
+      '<div class="delta"><span class="k">vs 去年同期</span>' + pctBadge(curSr, lySr, true) + '</div>' +
+    '</div>' +
+  '</div>';
+
+  grid.innerHTML = ratioCard + diversityCard + selfReportCard;
+}
+
 // ====== Chart utilities ======
 function destroyChart(id) { if (CHARTS[id]) { CHARTS[id].destroy(); CHARTS[id] = null; } }
 var PALETTE = ['#2563eb','#16a34a','#dc2626','#f59e0b','#7c3aed','#0891b2','#db2777','#65a30d','#ea580c','#4b5563','#0ea5e9','#84cc16','#f43f5e','#a855f7','#14b8a6'];
@@ -880,11 +1342,15 @@ function renderMergedPeriodTable(cur, lm, ly, rowKeys, colKeys, targetId) {
   var curG = 0, lmG = 0, lyG = 0;
 
   var html = '<table class="cross"><thead><tr><th style="min-width:110px">事件類別 \\ 單位</th>';
-  colKeys.forEach(function (ck) { html += '<th>' + escapeHtml(ck) + '</th>'; });
+  colKeys.forEach(function (ck) {
+    var attr = ' data-drill-col-key="' + escapeHtml(COL.unit) + '" data-drill-col-val="' + escapeHtml(ck) + '" style="cursor:pointer"';
+    html += '<th' + attr + '>' + escapeHtml(ck) + '</th>';
+  });
   html += '<th>列計</th></tr></thead><tbody>';
 
   rowKeys.forEach(function (rk) {
-    html += '<tr><td class="rowh">' + escapeHtml(rk) + '</td>';
+    var rowDrillAttr = ' data-drill-row-key="' + escapeHtml(COL.category) + '" data-drill-row-val="' + escapeHtml(rk) + '" style="cursor:pointer"';
+    html += '<tr><td class="rowh"' + rowDrillAttr + '>' + escapeHtml(rk) + '</td>';
     curRowTot[rk] = 0; lmRowTot[rk] = 0; lyRowTot[rk] = 0;
     colKeys.forEach(function (ck) {
       var vc = (tabCur[rk] && tabCur[rk][ck]) || 0;
@@ -898,8 +1364,10 @@ function renderMergedPeriodTable(cur, lm, ly, rowKeys, colKeys, targetId) {
 
       var bg = heatColor(vc, maxCell);
       var txtColor = vc && (vc/maxCell > 0.5) ? '#fff' : '#1f2937';
-      var tip = '本期: ' + vc + ' / 上月: ' + vl + ' / 去年: ' + vy;
-      html += '<td class="num cell-multi" style="background:' + bg + ';color:' + txtColor + '" title="' + tip + '">' +
+      var tip = '本期: ' + vc + ' / 上月: ' + vl + ' / 去年: ' + vy + '（點擊以鑽研）';
+      var cellDrill = ' data-drill-row-key="' + escapeHtml(COL.category) + '" data-drill-row-val="' + escapeHtml(rk) +
+                      '" data-drill-col-key="' + escapeHtml(COL.unit) + '" data-drill-col-val="' + escapeHtml(ck) + '"';
+      html += '<td class="num cell-multi" style="background:' + bg + ';color:' + txtColor + '" title="' + tip + '"' + cellDrill + '>' +
         '<div class="cell-cur">' + (vc || '–') + '</div>' +
         '<div class="cell-cmp"><span class="v-lm">' + vl + '</span><span class="sep">/</span><span class="v-ly">' + vy + '</span></div>' +
         '</td>';
@@ -924,6 +1392,7 @@ function renderMergedPeriodTable(cur, lm, ly, rowKeys, colKeys, targetId) {
 
   html += '</tbody></table>';
   $(targetId).innerHTML = html;
+  attachTableDrill(targetId);
 }
 
 function renderCategoryCompareChart(cur, lm, ly) {
@@ -957,6 +1426,7 @@ function renderCategoryCompareChart(cur, lm, ly) {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
+      onClick: makeChartClickHandler(COL.category),
       layout: { padding: { top: 20 } },
       scales: {
         x: { ticks: { autoSkip: false, maxRotation: 45, minRotation: 30 } },
@@ -985,6 +1455,7 @@ function renderCategoryChart(cur) {
     data: { labels: arr.map(function(x){return x.k;}), datasets: [{ data: arr.map(function(x){return x.v;}), backgroundColor: PALETTE }] },
     options: {
       responsive:true, maintainAspectRatio:false,
+      onClick: makeChartClickHandler(COL.category),
       plugins: {
         legend: { position:'right' },
         datalabels: {
@@ -1013,6 +1484,7 @@ function renderWillingness(cur) {
     data: { labels: arr.map(function(x){return x.k;}), datasets: [{ label:'件數', data: arr.map(function(x){return x.v;}), backgroundColor:'#0ea5e9' }] },
     options: {
       responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      onClick: makeChartClickHandler(COL.willingness),
       scales:{ x:{beginAtZero:true, ticks:{precision:0}} },
       plugins:{
         legend:{display:false},
@@ -1026,27 +1498,127 @@ function renderWillingness(cur) {
   });
 }
 
-function renderBar(canvasId, key, arr, color, horiz) {
+function renderBar(canvasId, key, arr, color, horiz, drillCol) {
   destroyChart(key);
+  var opt = {
+    responsive:true, maintainAspectRatio:false, indexAxis: horiz?'y':'x',
+    layout: { padding: horiz ? { right: 24 } : { top: 20 } },
+    scales: { x:{beginAtZero:true, ticks:{precision:0}}, y:{beginAtZero:true, ticks:{precision:0}} },
+    plugins: {
+      legend:{display:false},
+      datalabels: {
+        anchor: 'end',
+        align: 'end',
+        color: '#111827',
+        font: { weight: 'bold', size: 11 },
+        clamp: true,
+        formatter: function (v) { return v ? v : ''; }
+      }
+    }
+  };
+  if (drillCol) opt.onClick = makeChartClickHandler(drillCol);
   CHARTS[key] = new Chart($(canvasId), {
     type: 'bar',
     data: { labels: arr.map(function(x){return x.k;}), datasets: [{ label:'次數', data: arr.map(function(x){return x.v;}), backgroundColor: color }] },
+    options: opt
+  });
+}
+
+// ====== 柏拉圖（Pareto）：發生主原因 Top 10 + 累積百分比折線 + 80% 線 ======
+function renderParetoCause(cur) {
+  var arr = sortedEntries(groupCount(cur, COL.cause), 10);
+  var labels = arr.map(function (x) { return x.k; });
+  var counts = arr.map(function (x) { return x.v; });
+  var total = counts.reduce(function (a, b) { return a + b; }, 0);
+  var cumulative = [];
+  var run = 0;
+  counts.forEach(function (v) { run += v; cumulative.push(total ? Math.round(run / total * 1000) / 10 : 0); });
+
+  destroyChart('cause');
+  CHARTS.cause = new Chart($('chart-cause'), {
+    type: 'bar',  // 頂層預設 type；個別 dataset 可覆寫
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: '件數',
+          data: counts,
+          backgroundColor: '#dc2626',
+          yAxisID: 'y',
+          order: 2
+        },
+        {
+          type: 'line',
+          label: '累積百分比',
+          data: cumulative,
+          borderColor: '#1d4ed8',
+          backgroundColor: '#1d4ed8',
+          tension: 0.2,
+          pointRadius: 4,
+          yAxisID: 'y1',
+          order: 1
+        }
+      ]
+    },
     options: {
-      responsive:true, maintainAspectRatio:false, indexAxis: horiz?'y':'x',
-      layout: { padding: horiz ? { right: 24 } : { top: 20 } },
-      scales: { x:{beginAtZero:true, ticks:{precision:0}}, y:{beginAtZero:true, ticks:{precision:0}} },
+      responsive: true, maintainAspectRatio: false,
+      onClick: makeChartClickHandler(COL.cause),
+      layout: { padding: { top: 24, right: 12 } },
+      scales: {
+        x: { ticks: { autoSkip: false, maxRotation: 30, minRotation: 0, font: { size: 11 } } },
+        y:  { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: '件數' } },
+        y1: {
+          beginAtZero: true, max: 100, position: 'right',
+          ticks: { callback: function (v) { return v + '%'; } },
+          grid: { drawOnChartArea: false },
+          title: { display: true, text: '累積 %' }
+        }
+      },
       plugins: {
-        legend:{display:false},
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            label: function (ctx) {
+              if (ctx.dataset.type === 'line') return '累積：' + ctx.parsed.y + '%';
+              return '件數：' + ctx.parsed.y;
+            }
+          }
+        },
         datalabels: {
-          anchor: 'end',
-          align: 'end',
-          color: '#111827',
-          font: { weight: 'bold', size: 11 },
-          clamp: true,
-          formatter: function (v) { return v ? v : ''; }
+          // 長條顯示數字（end），折線顯示 %
+          color: function (ctx) { return ctx.dataset.type === 'line' ? '#1d4ed8' : '#111827'; },
+          anchor: function (ctx) { return ctx.dataset.type === 'line' ? 'end' : 'end'; },
+          align:  function (ctx) { return ctx.dataset.type === 'line' ? 'top'  : 'end'; },
+          font: { size: 10, weight: 'bold' },
+          formatter: function (v, ctx) {
+            if (ctx.dataset.type === 'line') return v + '%';
+            return v ? v : '';
+          }
         }
       }
-    }
+    },
+    plugins: [{
+      id: 'pareto80line',
+      afterDraw: function (chart) {
+        var y1 = chart.scales.y1;
+        if (!y1) return;
+        var yPx = y1.getPixelForValue(80);
+        var ctx = chart.ctx;
+        ctx.save();
+        ctx.strokeStyle = '#f59e0b';
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(chart.chartArea.left, yPx);
+        ctx.lineTo(chart.chartArea.right, yPx);
+        ctx.stroke();
+        ctx.fillStyle = '#b45309';
+        ctx.font = '11px sans-serif';
+        ctx.fillText('80%', chart.chartArea.right - 28, yPx - 4);
+        ctx.restore();
+      }
+    }]
   });
 }
 
@@ -1090,7 +1662,8 @@ function extractKeysWithPreferred(tab, axis, preferred) {
   return out;
 }
 
-function renderCrossTable(containerId, tab, rowKeys, colKeys, title) {
+// rowColKey / colColKey 提供時，會在每格加上 data-drill-* 並啟用點擊鑽研
+function renderCrossTable(containerId, tab, rowKeys, colKeys, title, rowColKey, colColKey) {
   var colTotals = {}, rowTotals = {}, gTotal = 0, maxCell = 0;
   rowKeys.forEach(function (rk) {
     rowTotals[rk] = 0;
@@ -1102,16 +1675,26 @@ function renderCrossTable(containerId, tab, rowKeys, colKeys, title) {
       if (v > maxCell) maxCell = v;
     });
   });
+  var canDrill = !!(rowColKey || colColKey);
   var html = '<table class="cross"><thead><tr><th style="min-width:110px">' + (title||'') + '</th>';
-  colKeys.forEach(function (ck) { html += '<th>' + escapeHtml(ck) + '</th>'; });
+  colKeys.forEach(function (ck) {
+    var attr = colColKey ? ' data-drill-col-key="' + escapeHtml(colColKey) + '" data-drill-col-val="' + escapeHtml(ck) + '" style="cursor:pointer"' : '';
+    html += '<th' + attr + '>' + escapeHtml(ck) + '</th>';
+  });
   html += '<th>列計</th></tr></thead><tbody>';
   rowKeys.forEach(function (rk) {
-    html += '<tr><td class="rowh">' + escapeHtml(rk) + '</td>';
+    var rowAttr = rowColKey ? ' data-drill-row-key="' + escapeHtml(rowColKey) + '" data-drill-row-val="' + escapeHtml(rk) + '" style="cursor:pointer"' : '';
+    html += '<tr><td class="rowh"' + rowAttr + '>' + escapeHtml(rk) + '</td>';
     colKeys.forEach(function (ck) {
       var v = (tab[rk] && tab[rk][ck]) || 0;
       var bg = heatColor(v, maxCell);
       var txtColor = v && (v/maxCell > 0.5) ? '#fff' : '#1f2937';
-      html += '<td class="num" style="background:' + bg + ';color:' + txtColor + '">' + (v||'') + '</td>';
+      var dataAttr = '';
+      if (canDrill) {
+        if (rowColKey) dataAttr += ' data-drill-row-key="' + escapeHtml(rowColKey) + '" data-drill-row-val="' + escapeHtml(rk) + '"';
+        if (colColKey) dataAttr += ' data-drill-col-key="' + escapeHtml(colColKey) + '" data-drill-col-val="' + escapeHtml(ck) + '"';
+      }
+      html += '<td class="num" style="background:' + bg + ';color:' + txtColor + '"' + dataAttr + '>' + (v||'') + '</td>';
     });
     html += '<td class="num total">' + rowTotals[rk] + '</td></tr>';
   });
@@ -1120,7 +1703,26 @@ function renderCrossTable(containerId, tab, rowKeys, colKeys, title) {
   html += '<td class="num total">' + gTotal + '</td></tr>';
   html += '</tbody></table>';
   $(containerId).innerHTML = html;
+  if (canDrill) attachTableDrill(containerId);
   return { colTotals: colTotals, rowTotals: rowTotals, gTotal: gTotal, maxCell: maxCell };
+}
+
+// 表格鑽研：點格子 → 同時設定 row + col 兩個鑽研條件；點表頭 → 設單一條件
+function attachTableDrill(containerId) {
+  var box = $(containerId);
+  if (!box) return;
+  box.querySelectorAll('[data-drill-row-key],[data-drill-col-key]').forEach(function (el) {
+    el.addEventListener('click', function (e) {
+      var rk = el.getAttribute('data-drill-row-key');
+      var rv = el.getAttribute('data-drill-row-val');
+      var ck = el.getAttribute('data-drill-col-key');
+      var cv = el.getAttribute('data-drill-col-val');
+      var m = {};
+      if (rk && rv) m[rk] = rv;
+      if (ck && cv) m[ck] = cv;
+      if (Object.keys(m).length) setDrillDownMulti(m);
+    });
+  });
 }
 
 // ====== SAC 決策矩陣 ======
@@ -1128,7 +1730,7 @@ function renderSacMatrix(cur, targetId) {
   var tab = crossTab(cur, COL.freq, COL.severity);
   var rows = extractKeysWithPreferred(tab, 'row', SAC_FREQ_ORDER);
   var cols = extractKeysWithPreferred(tab, 'col', SAC_SEVERITY_ORDER);
-  renderCrossTable(targetId, tab, rows, cols, '發生頻率 \\ 嚴重程度');
+  renderCrossTable(targetId, tab, rows, cols, '發生頻率 \\ 嚴重程度', COL.freq, COL.severity);
 }
 
 // ====== 單位 × 事件類別 ======
@@ -1136,7 +1738,7 @@ function renderUnitCatMatrix(cur, targetId) {
   var tab = crossTab(cur, COL.unit, COL.category);
   var rows = extractKeysWithPreferred(tab, 'row', []); // 單位按字串排序
   var cols = extractKeysWithPreferred(tab, 'col', REPORT_CATEGORIES);
-  renderCrossTable(targetId, tab, rows, cols, '單位 \\ 事件類別');
+  renderCrossTable(targetId, tab, rows, cols, '單位 \\ 事件類別', COL.unit, COL.category);
 }
 
 // ====== 管路專區 ======
@@ -1154,7 +1756,7 @@ function renderTubeSection(cur) {
   var tab = crossTab(tubeRows, COL.tube, COL.cause);
   var rows = extractKeysWithPreferred(tab, 'row', TUBE_TYPES);
   var cols = extractKeysWithPreferred(tab, 'col', TUBE_ABNORMAL);
-  renderCrossTable('tube-matrix', tab, rows, cols, '管路種類 \\ 異常類別');
+  renderCrossTable('tube-matrix', tab, rows, cols, '管路種類 \\ 異常類別', COL.tube, COL.cause);
 
   // 約束中自拔
   var selfPull = tubeRows.filter(function (r) { return /自拔/.test(String(r[COL.cause]||'')); });
@@ -1193,6 +1795,7 @@ function renderReporterCatChart(cur) {
     data: { labels: reporters, datasets: datasets },
     options: {
       responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      onClick: reporterCatClickHandler,
       scales: {
         x: { beginAtZero:true, stacked:true, ticks:{precision:0} },
         y: { stacked:true }
@@ -1240,7 +1843,12 @@ function buildReportPage() {
   var y = f.start.getFullYear(), m = f.start.getMonth() + 1;
   var roc = y - 1911;
   $('rep-title').textContent = roc + ' 年 ' + String(m).padStart(2,'0') + ' 月 病人安全事件通報 月統計表';
-  $('rep-period').textContent = '期間：' + fmtDate(f.start) + ' ~ ' + fmtDate(f.end) + '（共 ' + cur.length + ' 件）';
+  var drillNote = '';
+  var dkeys = Object.keys(DRILLDOWN).filter(function (k) { return DRILLDOWN[k]; });
+  if (dkeys.length) {
+    drillNote = '；已套用鑽研條件：' + dkeys.map(function (k) { return k + '=' + DRILLDOWN[k]; }).join('、');
+  }
+  $('rep-period').textContent = '期間：' + fmtDate(f.start) + ' ~ ' + fmtDate(f.end) + '（共 ' + cur.length + ' 件）' + drillNote;
 
   // 一、SAC 決策矩陣
   renderSacMatrix(cur, 'rep-sac-matrix');
