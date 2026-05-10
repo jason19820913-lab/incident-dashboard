@@ -177,11 +177,46 @@
   table.cross td.num { cursor: pointer; }
   table.cross td.rowh, table.cross td.total { cursor: default; }
 
+  /* ========== 即時實證對策面板 ========== */
+  .ev-panel { background: linear-gradient(180deg, #ecfeff 0%, #fff 100%);
+    border-radius: 12px; padding: 18px; margin-top: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08); border: 1px solid #a5f3fc; }
+  .ev-panel h3 { margin: 0 0 4px; font-size: 16px; color: #0e7490; display: flex; align-items: center; gap: 8px; }
+  .ev-panel .desc { font-size: 13px; color: #155e75; margin: 0 0 10px; }
+  .ev-context { background: #fff; border: 1px dashed #67e8f9; border-radius: 8px; padding: 10px 14px;
+    margin-bottom: 12px; font-size: 13px; color: #164e63; }
+  .ev-context .lbl { font-size: 11px; font-weight: 700; color: #0891b2; letter-spacing: 1px; margin-right: 6px; }
+  .ev-context .row { margin: 3px 0; }
+  .ev-context b { color: #075985; }
+  .ev-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+  .ev-btn { padding: 9px 16px; border: 1px solid #0891b2; border-radius: 8px; background: #0891b2;
+    color: #fff; font-weight: 600; font-size: 14px; cursor: pointer; min-height: 36px; }
+  .ev-btn:hover { background: #0e7490; }
+  .ev-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .ev-btn.secondary { background: #fff; color: #0e7490; }
+  .ev-output { background: #fff; border: 1px solid #cffafe; border-radius: 8px; padding: 16px;
+    min-height: 60px; font-size: 14px; line-height: 1.65; color: #134e4a; }
+  .ev-output.empty { color: #94a3b8; font-style: italic; font-size: 13px; }
+  .ev-output.loading { color: #0891b2; }
+  .ev-output.error { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
+  .ev-sources { margin-top: 12px; padding-top: 12px; border-top: 1px dashed #e5e7eb; }
+  .ev-sources h4 { margin: 0 0 6px; font-size: 13px; color: #0e7490; }
+  .ev-source-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ev-source { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px;
+    background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 999px; font-size: 12px;
+    color: #115e59; text-decoration: none; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ev-source:hover { background: #ccfbf1; }
+  .ev-source-num { background: #0891b2; color: #fff; border-radius: 50%; width: 18px; height: 18px;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+  .ev-queries { margin-top: 8px; font-size: 11px; color: #64748b; }
+  .ev-queries .q { display: inline-block; background: #f1f5f9; padding: 2px 8px; border-radius: 4px; margin: 2px; }
+
   /* 列印時隱藏 AI 面板 */
   @media print {
-    .ai-panel { display: none !important; }
+    .ai-panel, .ev-panel { display: none !important; }
   }
-  body.report-mode .ai-panel { display: none !important; }
+  body.report-mode .ai-panel,
+  body.report-mode .ev-panel { display: none !important; }
 
   /* ========== 月報模式 ========== */
   body.report-mode .filter-bar,
@@ -335,6 +370,20 @@
       <div class="chart-box tall"><canvas id="chart-unit"></canvas></div>
     </div>
   </div>
+</div>
+
+<!-- ====== 即時實證改善對策（依當前焦點即時生成） ====== -->
+<div class="ev-panel" id="ev-panel">
+  <h3>📚 即時實證改善對策 <span style="font-size:12px;font-weight:400;color:#64748b;">依目前篩選與鑽研情境，結合國內外指引動態生成</span></h3>
+  <p class="desc">系統會根據你目前鎖定的事件類別與 Top 原因，呼叫 Gemini + Google 搜尋接地，產出含 IHI / JCI / ISMP / CDC / WHO / 醫策會 / TPR 引用的改善對策，並列出參考來源連結。</p>
+  <div class="ev-context" id="ev-context">尚未鎖定特定事件類別。請點上方圖卡（例如「事件類別分布」中的某一類）即可鎖定情境。</div>
+  <div class="ev-actions">
+    <button type="button" class="ev-btn" id="ev-go" onclick="aiEvidence()">📚 生成此情境的實證改善對策</button>
+    <button type="button" class="ev-btn secondary" onclick="aiEvidenceClear()">清空</button>
+    <span style="font-size:11px;color:#64748b;">⏱️ 產生需 10-30 秒（含網路搜尋）</span>
+  </div>
+  <div class="ev-output empty" id="ev-output">點選上方按鈕開始生成。建議先用圖卡鎖定特定事件類別，產出更聚焦。</div>
+  <div class="ev-sources" id="ev-sources" style="display:none;"></div>
 </div>
 
 <!-- ====== AI 智能分析（Gemini） ====== -->
@@ -982,6 +1031,8 @@ function refresh() {
   renderBar('chart-sac', 'sac', sortedEntries(groupCount(cur, COL.sac)).sort(sacSort), '#7c3aed', false, COL.sac);
   renderBar('chart-severity', 'severity', sortedEntries(groupCount(cur, COL.severity)), '#f59e0b', false, COL.severity);
   renderBar('chart-unit', 'unit', sortedEntries(groupCount(cur, COL.unit), 10), '#0891b2', true, COL.unit);
+  // 同步底部「即時實證對策」面板的焦點摘要
+  if (typeof renderEvidenceContext === 'function') renderEvidenceContext();
 }
 
 function sacSort(a, b) {
@@ -2266,6 +2317,214 @@ document.addEventListener('DOMContentLoaded', function () {
     else setAiModel(sel.value);
   }
 });
+
+// ====== 即時實證改善對策（evidence）======
+// 1. 依當前 cur 計算焦點情境（事件類別 → Top 原因、單位、SAC 高風險）
+// 2. 呼叫 Gemini evidence 類型（含 Google Search grounding）
+// 3. 顯示報告 + 引用清單
+function buildEvidenceContext() {
+  var f = getFilters();
+  if (!f.start || !f.end) return null;
+  var cur = filterRows(RAW, f.start, f.end);
+  if (!cur.length) return { empty: true };
+
+  // 鎖定的事件類別：優先使用 DRILLDOWN['事件類別']；若無則取 cur 中件數最多的類別
+  var pinnedCat = DRILLDOWN[COL.category] || null;
+  var catCounts = groupCount(cur, COL.category);
+  var topCat = sortedEntries(catCounts, 1)[0];
+  var focusCat = pinnedCat || (topCat && topCat.k);
+  var focusRows = focusCat ? cur.filter(function (r) {
+    return normKey(r[COL.category]) === focusCat;
+  }) : cur;
+
+  var topCauses = sortedEntries(groupCount(focusRows, COL.cause), 5);
+  var topUnits  = sortedEntries(groupCount(focusRows, COL.unit), 5);
+  var topSubCauses = sortedEntries(groupCount(focusRows, COL.subCause), 5).filter(function (x) { return x.k && x.k !== '(未填)'; });
+  var sacHigh = focusRows.filter(function (r) { return isHighSac(r[COL.sac]); }).length;
+  var deathCount = focusRows.filter(function (r) { return isDeath(r[COL.severity]); }).length;
+  var nearMissCount = focusRows.filter(function (r) {
+    return /跡近|near/i.test(String(r[COL.severity]||'')) || /^\s*5\s*$/.test(String(r[COL.sac]||''));
+  }).length;
+
+  function pct(n, d) { return d ? Math.round(n/d*1000)/10 : 0; }
+
+  return {
+    period: { start: fmtDate(f.start), end: fmtDate(f.end) },
+    pinnedFromDrilldown: !!pinnedCat,
+    focusCategory: focusCat,
+    focusCount: focusRows.length,
+    totalCount: cur.length,
+    topCauses: topCauses.map(function (x) { return { cause: x.k, count: x.v, pct: pct(x.v, focusRows.length) }; }),
+    topSubCauses: topSubCauses.map(function (x) { return { subCause: x.k, count: x.v }; }),
+    topUnits: topUnits.map(function (x) { return { unit: x.k, count: x.v, pct: pct(x.v, focusRows.length) }; }),
+    sacHighCount: sacHigh,
+    deathCount: deathCount,
+    nearMissCount: nearMissCount,
+    drillDown: Object.assign({}, DRILLDOWN)
+  };
+}
+
+// 渲染「焦點情境」摘要區
+function renderEvidenceContext() {
+  var box = $('ev-context');
+  var btn = $('ev-go');
+  if (!box) return;
+  var ctx = buildEvidenceContext();
+  if (!ctx) {
+    box.innerHTML = '請先選擇日期範圍。';
+    if (btn) btn.disabled = true;
+    return;
+  }
+  if (ctx.empty) {
+    box.innerHTML = '當前篩選範圍無資料，無法生成對策。';
+    if (btn) btn.disabled = true;
+    return;
+  }
+  if (btn) btn.disabled = false;
+
+  var html = '';
+  html += '<div class="row"><span class="lbl">期間</span>' + ctx.period.start + ' ~ ' + ctx.period.end + '（總 <b>' + ctx.totalCount + '</b> 件）</div>';
+  if (ctx.focusCategory) {
+    var pinTag = ctx.pinnedFromDrilldown
+      ? '<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:4px;font-size:11px;margin-left:6px;">🔍 來自鑽研</span>'
+      : '<span style="background:#e0e7ff;color:#4338ca;padding:1px 6px;border-radius:4px;font-size:11px;margin-left:6px;">📊 自動鎖定（最高發）</span>';
+    html += '<div class="row"><span class="lbl">焦點類別</span><b>' + escapeHtml(ctx.focusCategory) + '</b>（' + ctx.focusCount + ' 件）' + pinTag + '</div>';
+  }
+  if (ctx.topCauses.length) {
+    html += '<div class="row"><span class="lbl">Top 原因</span>' +
+      ctx.topCauses.map(function (x, i) {
+        return (i+1) + '. <b>' + escapeHtml(x.cause) + '</b>（' + x.count + ' 件 · ' + x.pct + '%）';
+      }).join('；') + '</div>';
+  }
+  if (ctx.topUnits.length) {
+    html += '<div class="row"><span class="lbl">熱點單位</span>' +
+      ctx.topUnits.slice(0, 3).map(function (x) { return escapeHtml(x.unit) + ' (' + x.count + ')'; }).join('、') + '</div>';
+  }
+  var alerts = [];
+  if (ctx.sacHighCount > 0) alerts.push('<b style="color:#dc2626;">⚠️ SAC ≥3 共 ' + ctx.sacHighCount + ' 件</b>');
+  if (ctx.deathCount > 0)   alerts.push('<b style="color:#dc2626;">☠️ 死亡 ' + ctx.deathCount + ' 件</b>');
+  if (alerts.length) html += '<div class="row"><span class="lbl">警示</span>' + alerts.join(' · ') + '</div>';
+  if (ctx.nearMissCount > 0) {
+    html += '<div class="row"><span class="lbl">跡近錯失</span>' + ctx.nearMissCount + ' 件（佔焦點 ' +
+      Math.round(ctx.nearMissCount / ctx.focusCount * 100) + '%）</div>';
+  }
+  box.innerHTML = html;
+}
+
+function aiEvidence() {
+  var ctx = buildEvidenceContext();
+  if (!ctx || ctx.empty) {
+    $('ev-output').className = 'ev-output error';
+    $('ev-output').textContent = '⚠️ 當前篩選範圍無資料，無法生成。請先調整日期或鑽研條件。';
+    return;
+  }
+
+  // 把焦點情境組成 Gemini 可讀的中文敘述
+  var ctxText = '';
+  ctxText += '- 期間：' + ctx.period.start + ' ~ ' + ctx.period.end + '\n';
+  ctxText += '- 鎖定事件類別：' + (ctx.focusCategory || '(未鎖定)') + '（' + ctx.focusCount + ' 件，佔總量 ' + Math.round(ctx.focusCount/ctx.totalCount*100) + '%）\n';
+  if (ctx.topCauses && ctx.topCauses.length) {
+    ctxText += '- Top 原因（依件數降冪）：\n';
+    ctx.topCauses.forEach(function (x, i) {
+      ctxText += '  ' + (i+1) + '. ' + x.cause + '：' + x.count + ' 件（' + x.pct + '%）\n';
+    });
+  }
+  if (ctx.topSubCauses && ctx.topSubCauses.length) {
+    ctxText += '- 次原因 Top：' + ctx.topSubCauses.slice(0,3).map(function(x){ return x.subCause + '(' + x.count + ')'; }).join('、') + '\n';
+  }
+  if (ctx.topUnits && ctx.topUnits.length) {
+    ctxText += '- 熱點單位：' + ctx.topUnits.slice(0,5).map(function(x){ return x.unit + '(' + x.count + ')'; }).join('、') + '\n';
+  }
+  ctxText += '- SAC ≥3（中度以上）：' + ctx.sacHighCount + ' 件\n';
+  ctxText += '- 死亡：' + ctx.deathCount + ' 件\n';
+  ctxText += '- 跡近錯失：' + ctx.nearMissCount + ' 件\n';
+  if (Object.keys(ctx.drillDown).length) {
+    ctxText += '- 額外鑽研條件：' + Object.keys(ctx.drillDown).map(function(k){ return k + '=' + ctx.drillDown[k]; }).join('、') + '\n';
+  }
+
+  var summary = buildAiSummary();
+  var out = $('ev-output');
+  out.className = 'ev-output loading';
+  out.textContent = '🌐 正在搜尋國內外指引並生成對策（10-30 秒）⋯';
+  $('ev-sources').style.display = 'none';
+  $('ev-sources').innerHTML = '';
+  var goBtn = $('ev-go');
+  if (goBtn) goBtn.disabled = true;
+
+  var body = {
+    action: 'gemini',
+    type: 'evidence',
+    summary: JSON.stringify(summary || {}),
+    context: ctxText
+  };
+  var personalKey = getAiKey();
+  if (personalKey) body.apiKey = personalKey;
+  body.model = getAiModel();
+
+  fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body),
+    redirect: 'follow'
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (res) {
+      if (goBtn) goBtn.disabled = false;
+      if (res.error === 'rate_limit' || res.code === 429) {
+        out.className = 'ev-output error';
+        out.textContent = '⏳ Gemini 配額已用完。請等候約 60 秒，或到 AI 面板切到 gemini-2.0-flash-lite（每分鐘 30 次）。';
+        return;
+      }
+      if (res.error) {
+        out.className = 'ev-output error';
+        var emsg = '❌ ' + res.error;
+        if (/api\s*key|金鑰|GEMINI_API_KEY/i.test(res.error) && !getAiKey()) {
+          emsg += '\n👉 請先到下方 AI 面板的「🔑 設定 / 更換金鑰」輸入 Gemini API Key。';
+        }
+        out.textContent = emsg;
+        return;
+      }
+      out.className = 'ev-output';
+      out.innerHTML = mdToHtml(res.text || '(空回覆)');
+      // 渲染引用來源
+      var srcBox = $('ev-sources');
+      var srcs = res.sources || [];
+      var queries = res.searchQueries || [];
+      if (srcs.length || queries.length) {
+        var html = '';
+        if (srcs.length) {
+          html += '<h4>🔗 引用來源（Google 搜尋接地）</h4>';
+          html += '<div class="ev-source-list">' + srcs.map(function (s, i) {
+            var t = s.title.length > 60 ? s.title.slice(0, 60) + '⋯' : s.title;
+            return '<a class="ev-source" href="' + escapeHtml(s.uri) + '" target="_blank" rel="noopener" title="' + escapeHtml(s.title) + '">' +
+              '<span class="ev-source-num">' + (i+1) + '</span>' + escapeHtml(t) + '</a>';
+          }).join('') + '</div>';
+        }
+        if (queries.length) {
+          html += '<div class="ev-queries">🔍 搜尋字串：' + queries.map(function (q) {
+            return '<span class="q">' + escapeHtml(q) + '</span>';
+          }).join('') + '</div>';
+        }
+        srcBox.innerHTML = html;
+        srcBox.style.display = '';
+      } else {
+        srcBox.innerHTML = '<div style="font-size:12px;color:#94a3b8;">本次回覆未提供 Google 搜尋接地引用（可能是模型未支援或剛好沒搜尋）。建議改用 gemini-2.0-flash 或更新模型。</div>';
+        srcBox.style.display = '';
+      }
+    })
+    .catch(function (err) {
+      if (goBtn) goBtn.disabled = false;
+      out.className = 'ev-output error';
+      out.textContent = '❌ 連線失敗：' + err.message + '\n建議：1) 確認 Apps Script 已重新部署最新 Code.gs（含 evidence 類型）2) 確認個人 Gemini API Key 已設定';
+    });
+}
+
+function aiEvidenceClear() {
+  $('ev-output').className = 'ev-output empty';
+  $('ev-output').textContent = '已清空。可再次點「生成」按鈕重新產出。';
+  $('ev-sources').innerHTML = '';
+  $('ev-sources').style.display = 'none';
+}
 
 // ====== NotebookLM 匯出 ======
 function downloadFile(content, filename, mime) {
