@@ -62,6 +62,51 @@
   .delta-down { color: #059669; font-weight: 600; }
   .delta-flat { color: #6b7280; }
 
+  /* ===== KPI 卡片色彩變體（依嚴重程度＋指標主題） ===== */
+  .kpi { position: relative; transition: transform .15s, box-shadow .15s; border-left: 4px solid #cbd5e1; }
+  .kpi:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+  .kpi .label { color: #475569; }
+  .kpi .value { color: #0f172a; }
+
+  /* 總事件數 — 藍（總覽） */
+  .kpi-total      { background: linear-gradient(180deg, #eff6ff 0%, #fff 60%); border-left-color: #2563eb; }
+  .kpi-total .label { color: #1e40af; }
+  .kpi-total .value { color: #1e3a8a; }
+
+  /* SAC 嚴重程度：紅 → 橙 → 黃 → 青 → 綠 */
+  .kpi-sac-1      { background: linear-gradient(180deg, #fef2f2 0%, #fff 65%); border-left-color: #b91c1c; }
+  .kpi-sac-1 .label, .kpi-sac-1 .value { color: #7f1d1d; }
+
+  .kpi-sac-2      { background: linear-gradient(180deg, #fff7ed 0%, #fff 65%); border-left-color: #c2410c; }
+  .kpi-sac-2 .label, .kpi-sac-2 .value { color: #9a3412; }
+
+  .kpi-sac-3      { background: linear-gradient(180deg, #fefce8 0%, #fff 65%); border-left-color: #a16207; }
+  .kpi-sac-3 .label, .kpi-sac-3 .value { color: #854d0e; }
+
+  .kpi-sac-4      { background: linear-gradient(180deg, #ecfeff 0%, #fff 65%); border-left-color: #0e7490; }
+  .kpi-sac-4 .label, .kpi-sac-4 .value { color: #155e75; }
+
+  .kpi-sac-5      { background: linear-gradient(180deg, #f0fdf4 0%, #fff 65%); border-left-color: #15803d; }
+  .kpi-sac-5 .label, .kpi-sac-5 .value { color: #14532d; }
+
+  /* 通報文化健康度 */
+  .kpi-culture-nearmiss  { background: linear-gradient(180deg, #ecfeff 0%, #fff 65%); border-left-color: #06b6d4; }
+  .kpi-culture-nearmiss .label, .kpi-culture-nearmiss .value { color: #155e75; }
+
+  .kpi-culture-diversity { background: linear-gradient(180deg, #f5f3ff 0%, #fff 65%); border-left-color: #7c3aed; }
+  .kpi-culture-diversity .label, .kpi-culture-diversity .value { color: #4c1d95; }
+
+  .kpi-culture-self      { background: linear-gradient(180deg, #f0fdf4 0%, #fff 65%); border-left-color: #16a34a; }
+  .kpi-culture-self .label, .kpi-culture-self .value { color: #14532d; }
+
+  /* 標準化指標率（左側色條 + 淡背景） */
+  .kpi-rate { background: linear-gradient(180deg, #f8fafc 0%, #fff 60%); }
+  .kpi-rate-fall    { border-left-color: #dc2626; background: linear-gradient(180deg, #fef2f2 0%, #fff 65%); }
+  .kpi-rate-med     { border-left-color: #7c3aed; background: linear-gradient(180deg, #f5f3ff 0%, #fff 65%); }
+  .kpi-rate-cvp     { border-left-color: #0891b2; background: linear-gradient(180deg, #ecfeff 0%, #fff 65%); }
+  .kpi-rate-foley   { border-left-color: #f59e0b; background: linear-gradient(180deg, #fffbeb 0%, #fff 65%); }
+  .kpi-rate-ett     { border-left-color: #16a34a; background: linear-gradient(180deg, #f0fdf4 0%, #fff 65%); }
+
   /* Chart grid */
   .chart-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
   .chart-card h3 { margin: 0 0 10px; font-size: 14px; color: #374151; font-weight: 600; }
@@ -1180,7 +1225,8 @@ function renderKPIs(cur, lm, ly) {
       label: '總事件數',
       v: cur.length, lm: lm.length, ly: ly.length,
       breakdown: categoryBreakdown(cur),
-      showPct: false   // 總事件數本身不算佔率
+      showPct: false,
+      cssClass: 'kpi-total'
     }
   ];
   // SAC 1 ~ SAC 5 各自分級，附上該分級的事件類別統計
@@ -1193,7 +1239,8 @@ function renderKPIs(cur, lm, ly) {
       lm: countWhere(lm, COL.sac, test),
       ly: countWhere(ly, COL.sac, test),
       breakdown: categoryBreakdown(sacRows),
-      showPct: true
+      showPct: true,
+      cssClass: 'kpi-sac-' + lv
     });
   }
   $('kpi-grid').innerHTML = cards.map(function (c) {
@@ -1208,7 +1255,7 @@ function renderKPIs(cur, lm, ly) {
       var pct = total > 0 ? Math.round(c.v / total * 1000) / 10 : 0;
       pctHtml = '<span style="font-size:13px;font-weight:600;color:#6b7280;margin-left:6px;vertical-align:middle;">（佔率 ' + pct + '%）</span>';
     }
-    return '<div class="card kpi">' +
+    return '<div class="card kpi ' + (c.cssClass || '') + '">' +
       '<div class="label">' + c.label + '</div>' +
       '<div class="value">' + c.v + pctHtml + '</div>' +
       '<div class="deltas">' +
@@ -1252,7 +1299,8 @@ function renderRateKPIs(cur, lm, ly, f) {
       filter: isFall,
       denomKeys: [DENOM_KEYS.wardDays, DENOM_KEYS.icuDays],
       unit: '%',
-      color: '#dc2626'
+      color: '#dc2626',
+      cssClass: 'kpi-rate-fall'
     },
     {
       label: '藥物事件率（%，每百張處方）',
@@ -1260,7 +1308,8 @@ function renderRateKPIs(cur, lm, ly, f) {
       filter: isMed,
       denomKeys: [DENOM_KEYS.outpatientRx, DENOM_KEYS.inpatientRx, DENOM_KEYS.erRx],
       unit: '%',
-      color: '#7c3aed'
+      color: '#7c3aed',
+      cssClass: 'kpi-rate-med'
     },
     {
       label: '中心靜脈導管自拔率（%，每百 CVP 日）',
@@ -1268,7 +1317,8 @@ function renderRateKPIs(cur, lm, ly, f) {
       filter: function (r) { return tubeMatches(['中心靜脈'])(r) && isSelfPull(r); },
       denomKeys: [DENOM_KEYS.cvpDays],
       unit: '%',
-      color: '#0891b2'
+      color: '#0891b2',
+      cssClass: 'kpi-rate-cvp'
     },
     {
       label: '導尿管事件率（%，每百導尿管日）',
@@ -1276,7 +1326,8 @@ function renderRateKPIs(cur, lm, ly, f) {
       filter: function (r) { return tubeMatches(['導尿管'])(r); },
       denomKeys: [DENOM_KEYS.foleyDays],
       unit: '%',
-      color: '#f59e0b'
+      color: '#f59e0b',
+      cssClass: 'kpi-rate-foley'
     },
     {
       label: '氣管內管自拔率 UPP（%，每百插管日）',
@@ -1284,7 +1335,8 @@ function renderRateKPIs(cur, lm, ly, f) {
       filter: function (r) { return tubeMatches(['氣管內管'])(r) && isSelfPull(r); },
       denomKeys: [DENOM_KEYS.ettDays],
       unit: '%',
-      color: '#16a34a'
+      color: '#16a34a',
+      cssClass: 'kpi-rate-ett'
     }
   ];
 
@@ -1343,7 +1395,7 @@ function renderRateKPIs(cur, lm, ly, f) {
 
     var trendRange = series.length ? (series[0].ym + ' ~ ' + series[series.length-1].ym) : '';
 
-    return '<div class="card kpi" title="' + escapeHtml(ind.tooltip) + '">' +
+    return '<div class="card kpi ' + (ind.cssClass || 'kpi-rate') + '" title="' + escapeHtml(ind.tooltip) + '">' +
       '<div class="label">' + escapeHtml(ind.label) + '</div>' +
       '<div class="value">' + fmtRate(rCur) + '</div>' +
       '<div class="deltas">' +
@@ -1414,7 +1466,7 @@ function renderCultureKPIs(cur, lm, ly) {
     return '<span class="' + cls + '">' + sign + ' ' + Math.abs(d).toFixed(1) + ' (' + (p == null ? '—' : p) + ')</span>';
   }
 
-  var ratioCard = '<div class="card kpi" title="跡近錯失（near miss）佔總通報的比值。越高代表系統在傷害發生前的攔截力越強，是 Just Culture 與通報文化成熟度的關鍵指標。">' +
+  var ratioCard = '<div class="card kpi kpi-culture-nearmiss" title="跡近錯失（near miss）佔總通報的比值。越高代表系統在傷害發生前的攔截力越強，是 Just Culture 與通報文化成熟度的關鍵指標。">' +
     '<div class="label">跡近錯失比值</div>' +
     '<div class="value">' + (curRatio == null ? '—' : curRatio + '%') + '</div>' +
     '<div class="deltas">' +
@@ -1425,7 +1477,7 @@ function renderCultureKPIs(cur, lm, ly) {
     '<div class="bd-item" style="font-size:10px;color:#9ca3af"><span class="bc">健康區間參考</span><span class="bv">≥ 30%</span></div></div>' +
   '</div>';
 
-  var diversityCard = '<div class="card kpi" title="本期出現過的「通報者身分」類別數。越多代表跨職類都在通報，文化越平衡。若長期只有護理人員通報，需檢視醫師與其他職類的通報意願。">' +
+  var diversityCard = '<div class="card kpi kpi-culture-diversity" title="本期出現過的「通報者身分」類別數。越多代表跨職類都在通報，文化越平衡。若長期只有護理人員通報，需檢視醫師與其他職類的通報意願。">' +
     '<div class="label">通報多樣性（職類數）</div>' +
     '<div class="value">' + curDiv + '</div>' +
     '<div class="deltas">' +
@@ -1445,7 +1497,7 @@ function renderCultureKPIs(cur, lm, ly) {
   }
   var curSr = selfReportPct(cur), lmSr = selfReportPct(lm), lySr = selfReportPct(ly);
 
-  var selfReportCard = '<div class="card kpi" title="主動通報（非他人告知）的占比。越高代表員工願意承認異常並通報，反映 Just Culture 落地程度。">' +
+  var selfReportCard = '<div class="card kpi kpi-culture-self" title="主動通報（非他人告知）的占比。越高代表員工願意承認異常並通報，反映 Just Culture 落地程度。">' +
     '<div class="label">自主通報率</div>' +
     '<div class="value">' + (curSr == null ? '—' : curSr + '%') + '</div>' +
     '<div class="deltas">' +
@@ -2081,26 +2133,30 @@ function renderTubeSection(cur) {
   var rsRate    = pct(restrained.length, selfPull.length);   // 約束掙脫率 = 約束中自拔/自拔
   var reIntRate = pct(reintubed.length,  selfPull.length);   // 重新插管率 = 重插/自拔
 
-  function statCell(label, val, sub, color) {
-    return '<div style="flex:1 1 160px;min-width:160px;padding:10px 12px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;">' +
-      '<div style="font-size:11px;color:#6b7280;font-weight:600;">' + label + '</div>' +
-      '<div style="font-size:20px;font-weight:700;color:' + (color || '#111827') + ';line-height:1.2;margin-top:2px;">' + val + '</div>' +
-      (sub ? '<div style="font-size:11px;color:#9ca3af;margin-top:2px;">' + sub + '</div>' : '') +
+  function statCell(label, val, sub, color, bg) {
+    return '<div style="flex:1 1 180px;min-width:180px;padding:12px 14px;background:' + (bg || '#fff') +
+      ';border:1px solid #e5e7eb;border-left:4px solid ' + (color || '#cbd5e1') +
+      ';border-radius:8px;transition:transform .15s, box-shadow .15s;" ' +
+      'onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,.08)\';" ' +
+      'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\';">' +
+      '<div style="font-size:11px;color:#6b7280;font-weight:700;letter-spacing:.5px;">' + label + '</div>' +
+      '<div style="font-size:22px;font-weight:700;color:' + (color || '#111827') + ';line-height:1.2;margin-top:4px;">' + val + '</div>' +
+      (sub ? '<div style="font-size:11px;color:#9ca3af;margin-top:4px;line-height:1.4;">' + sub + '</div>' : '') +
     '</div>';
   }
 
   function pctStr(p) { return p == null ? '—' : p + '%'; }
 
   $('tube-stats').innerHTML =
-    '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">' +
+    '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;">' +
       statCell('管路事件總數', tubeRows.length + ' 件',
-               '本期符合管路類別之事件總數', '#0891b2') +
+               '本期符合管路類別之事件總數', '#0891b2', 'linear-gradient(180deg,#ecfeff 0%,#fff 70%)') +
       statCell('自拔事件', selfPull.length + ' 件',
-               '佔管路事件 ' + pctStr(spRate), '#dc2626') +
+               '佔管路事件 ' + pctStr(spRate), '#dc2626', 'linear-gradient(180deg,#fef2f2 0%,#fff 70%)') +
       statCell('約束掙脫率',  pctStr(rsRate),
-               '已使用約束但仍自拔 ' + restrained.length + ' / 自拔 ' + selfPull.length + '（值越低代表約束越有效）', '#b45309') +
+               '已使用約束但仍自拔 ' + restrained.length + ' / 自拔 ' + selfPull.length + '（值越低代表約束越有效）', '#b45309', 'linear-gradient(180deg,#fffbeb 0%,#fff 70%)') +
       statCell('重新插管率',  pctStr(reIntRate),
-               '自拔後需重新插管 ' + reintubed.length + ' / 自拔 ' + selfPull.length + '（衡量自拔的臨床傷害）', '#7c3aed') +
+               '自拔後需重新插管 ' + reintubed.length + ' / 自拔 ' + selfPull.length + '（衡量自拔的臨床傷害）', '#7c3aed', 'linear-gradient(180deg,#f5f3ff 0%,#fff 70%)') +
     '</div>';
 }
 
