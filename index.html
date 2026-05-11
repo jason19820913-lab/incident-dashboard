@@ -1174,11 +1174,13 @@ function breakdownHtml(arr) {
 }
 
 function renderKPIs(cur, lm, ly) {
+  var total = cur.length;
   var cards = [
     {
       label: '總事件數',
       v: cur.length, lm: lm.length, ly: ly.length,
-      breakdown: categoryBreakdown(cur)
+      breakdown: categoryBreakdown(cur),
+      showPct: false   // 總事件數本身不算佔率
     }
   ];
   // SAC 1 ~ SAC 5 各自分級，附上該分級的事件類別統計
@@ -1190,7 +1192,8 @@ function renderKPIs(cur, lm, ly) {
       v:  sacRows.length,
       lm: countWhere(lm, COL.sac, test),
       ly: countWhere(ly, COL.sac, test),
-      breakdown: categoryBreakdown(sacRows)
+      breakdown: categoryBreakdown(sacRows),
+      showPct: true
     });
   }
   $('kpi-grid').innerHTML = cards.map(function (c) {
@@ -1199,9 +1202,15 @@ function renderKPIs(cur, lm, ly) {
       breakdown = '<div class="breakdown"><div class="bd-title">事件類別</div>' +
         breakdownHtml(c.breakdown) + '</div>';
     }
+    // 佔率：占總事件數的比例（僅 SAC 1-5 顯示）
+    var pctHtml = '';
+    if (c.showPct) {
+      var pct = total > 0 ? Math.round(c.v / total * 1000) / 10 : 0;
+      pctHtml = '<span style="font-size:13px;font-weight:600;color:#6b7280;margin-left:6px;vertical-align:middle;">（佔率 ' + pct + '%）</span>';
+    }
     return '<div class="card kpi">' +
       '<div class="label">' + c.label + '</div>' +
-      '<div class="value">' + c.v + '</div>' +
+      '<div class="value">' + c.v + pctHtml + '</div>' +
       '<div class="deltas">' +
         '<div class="delta"><span class="k">vs 上月同期</span>' + deltaBadge(c.v, c.lm) + '</div>' +
         '<div class="delta"><span class="k">vs 去年同期</span>' + deltaBadge(c.v, c.ly) + '</div>' +
@@ -2057,16 +2066,42 @@ function renderTubeSection(cur) {
   var cols = extractKeysWithPreferred(tab, 'col', TUBE_ABNORMAL);
   renderCrossTable('tube-matrix', tab, rows, cols, '管路種類 \\ 異常類別', COL.tube, COL.cause);
 
-  // 約束中自拔
-  var selfPull = tubeRows.filter(function (r) { return /自拔/.test(String(r[COL.cause]||'')); });
-  var restrained = selfPull.filter(function (r) {
-    var v = String(r[COL.restraint]||'').trim();
-    return v && !/^(否|無|n|no|0|false|未|未約束)$/i.test(v);
-  });
+  // 自拔 / 約束 / 重新插管：以「自拔事件」為主要分析對象
+  function isYesField(v) {
+    var s = strongTrim(v);
+    if (!s) return false;
+    return !/^(否|無|n|no|0|false|未|未約束)$/i.test(s);
+  }
+  var selfPull   = tubeRows.filter(function (r) { return /自拔/.test(String(r[COL.cause]||'')); });
+  var restrained = selfPull.filter(function (r) { return isYesField(r[COL.restraint]); });
+  var reintubed  = selfPull.filter(function (r) { return isYesField(r[COL.reintub]); });
+
+  function pct(n, d) { return d > 0 ? (Math.round(n/d*1000)/10) : null; }
+  var spRate    = pct(selfPull.length,   tubeRows.length);   // 自拔率 = 自拔/管路事件
+  var rsRate    = pct(restrained.length, selfPull.length);   // 約束掙脫率 = 約束中自拔/自拔
+  var reIntRate = pct(reintubed.length,  selfPull.length);   // 重新插管率 = 重插/自拔
+
+  function statCell(label, val, sub, color) {
+    return '<div style="flex:1 1 160px;min-width:160px;padding:10px 12px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;">' +
+      '<div style="font-size:11px;color:#6b7280;font-weight:600;">' + label + '</div>' +
+      '<div style="font-size:20px;font-weight:700;color:' + (color || '#111827') + ';line-height:1.2;margin-top:2px;">' + val + '</div>' +
+      (sub ? '<div style="font-size:11px;color:#9ca3af;margin-top:2px;">' + sub + '</div>' : '') +
+    '</div>';
+  }
+
+  function pctStr(p) { return p == null ? '—' : p + '%'; }
+
   $('tube-stats').innerHTML =
-    '<strong>管路事件總數：</strong>' + tubeRows.length + ' 件 · ' +
-    '<strong>自拔：</strong>' + selfPull.length + ' 件 · ' +
-    '<strong>約束中仍自拔：</strong>' + restrained.length + ' 件';
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">' +
+      statCell('管路事件總數', tubeRows.length + ' 件',
+               '本期符合管路類別之事件總數', '#0891b2') +
+      statCell('自拔事件', selfPull.length + ' 件',
+               '佔管路事件 ' + pctStr(spRate), '#dc2626') +
+      statCell('約束掙脫率',  pctStr(rsRate),
+               '已使用約束但仍自拔 ' + restrained.length + ' / 自拔 ' + selfPull.length + '（值越低代表約束越有效）', '#b45309') +
+      statCell('重新插管率',  pctStr(reIntRate),
+               '自拔後需重新插管 ' + reintubed.length + ' / 自拔 ' + selfPull.length + '（衡量自拔的臨床傷害）', '#7c3aed') +
+    '</div>';
 }
 
 // ====== 通報者 × 事件類別（堆疊長條） ======
