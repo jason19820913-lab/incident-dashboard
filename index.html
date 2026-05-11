@@ -295,7 +295,7 @@
 
   <!-- 標準化指標率（依分母計算每千人日 / 千張處方率） -->
   <div class="card chart-card" style="margin-bottom:12px;">
-    <h3 style="margin:0 0 10px;font-size:14px;color:#374151;font-weight:600;">📊 標準化指標率（每千人日／千張處方）<span id="rate-period-label" style="font-weight:400;color:#9ca3af;font-size:12px;margin-left:8px;"></span></h3>
+    <h3 style="margin:0 0 10px;font-size:14px;color:#374151;font-weight:600;">📊 標準化指標率（單位 %，每百人日／每百張處方）<span id="rate-period-label" style="font-weight:400;color:#9ca3af;font-size:12px;margin-left:8px;"></span></h3>
     <div id="rate-grid" class="kpi-grid" style="margin-bottom:0;"></div>
     <div id="rate-warning" style="font-size:12px;color:#9ca3af;margin-top:8px;"></div>
   </div>
@@ -321,6 +321,11 @@
     <div class="card chart-card c-full">
       <h3>事件類別件數比較（本期 vs 上月同期 vs 去年同期）</h3>
       <div class="chart-box tall"><canvas id="chart-cat-compare"></canvas></div>
+    </div>
+
+    <div class="card chart-card c-full">
+      <h3>事件類別月趨勢（近 13 個月，可點圖例或數據點鑽研）<span id="cat-trend-range" style="font-size:11px;color:#9ca3af;margin-left:8px;font-weight:400;"></span></h3>
+      <div class="chart-box tall"><canvas id="chart-cat-trend"></canvas></div>
     </div>
 
     <div class="card chart-card c-half">
@@ -725,10 +730,97 @@ function sumDenom(start, end, denomKey) {
   return { total: hasAny ? total : null, missing: missingMonths };
 }
 
-// 計算每千的率值
-function ratePer1000(numerator, denomTotal) {
+// 率值換算（保留 2 位小數）；multiplier 1000=‰、100=%
+function rateValue(numerator, denomTotal, multiplier) {
   if (denomTotal == null || denomTotal === 0) return null;
-  return Math.round((numerator / denomTotal) * 1000 * 100) / 100; // 保留 2 位小數
+  var m = multiplier || 100;
+  return Math.round((numerator / denomTotal) * m * 100) / 100;
+}
+// 向後相容（避免老地方還有人用）；改為走百分比
+function ratePer1000(numerator, denomTotal) { return rateValue(numerator, denomTotal, 100); }
+
+// ===== 簡易 SVG sparkline =====
+// values: 陣列（可含 null）；不依賴 Chart.js，繪出輕量趨勢線
+function sparklineSvg(values, opts) {
+  opts = opts || {};
+  var w = opts.width || 200, h = opts.height || 40, pad = 3;
+  var nonNull = values.filter(function (v) { return v != null && !isNaN(v); });
+  if (nonNull.length < 2) {
+    return '<div style="height:' + h + 'px;color:#cbd5e1;font-size:11px;display:flex;align-items:center;justify-content:center;">資料不足以繪製趨勢</div>';
+  }
+  var max = Math.max.apply(null, nonNull);
+  var min = Math.min.apply(null, nonNull);
+  if (max === min) { max = min + 1; }
+  var n = values.length;
+  var dx = (w - pad * 2) / Math.max(1, n - 1);
+  var pts = values.map(function (v, i) {
+    if (v == null || isNaN(v)) return null;
+    var x = pad + i * dx;
+    var y = h - pad - ((v - min) / (max - min)) * (h - pad * 2);
+    return { x: x, y: y, v: v, i: i };
+  });
+  // 分段（遇 null 中斷）
+  var segs = [], cur = [];
+  pts.forEach(function (p) { if (p == null) { if (cur.length) { segs.push(cur); cur = []; } } else cur.push(p); });
+  if (cur.length) segs.push(cur);
+  var dPath = segs.map(function (s) { return 'M' + s.map(function (p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' L'); }).join(' ');
+  // 填色（line 下方淡色）
+  var areaPath = '';
+  if (segs.length) {
+    var first = segs[0][0], last = segs[segs.length - 1][segs[segs.length - 1].length - 1];
+    areaPath = dPath + ' L' + last.x.toFixed(1) + ',' + (h - pad).toFixed(1) +
+               ' L' + first.x.toFixed(1) + ',' + (h - pad).toFixed(1) + ' Z';
+  }
+  var color = opts.color || '#0891b2';
+  var lastPt = pts.filter(function (p) { return p; }).pop();
+  var minPt = pts.filter(function (p) { return p; }).reduce(function (a, b) { return a.v < b.v ? a : b; });
+  var maxPt = pts.filter(function (p) { return p; }).reduce(function (a, b) { return a.v > b.v ? a : b; });
+  var titles = opts.labels || [];
+  // 將 labels 與 values 配對顯示為 tooltip（hover 一條線顯示「2026-04: 0.32」）
+  var titleAttr = '';
+  if (titles.length === n) {
+    titleAttr = '<title>' + values.map(function (v, i) {
+      return titles[i] + '：' + (v == null ? '—' : v + (opts.unit || ''));
+    }).join('\n') + '</title>';
+  }
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" height="' + h + '" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible;">' +
+    titleAttr +
+    (areaPath ? '<path d="' + areaPath + '" fill="' + color + '" fill-opacity="0.12"/>' : '') +
+    '<path d="' + dPath + '" fill="none" stroke="' + color + '" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>' +
+    '<circle cx="' + minPt.x.toFixed(1) + '" cy="' + minPt.y.toFixed(1) + '" r="2" fill="#16a34a"><title>最低：' + minPt.v + (opts.unit||'') + '</title></circle>' +
+    '<circle cx="' + maxPt.x.toFixed(1) + '" cy="' + maxPt.y.toFixed(1) + '" r="2" fill="#dc2626"><title>最高：' + maxPt.v + (opts.unit||'') + '</title></circle>' +
+    '<circle cx="' + lastPt.x.toFixed(1) + '" cy="' + lastPt.y.toFixed(1) + '" r="2.5" fill="' + color + '" stroke="#fff" stroke-width="1"/>' +
+  '</svg>';
+}
+
+// 計算過去 N 個月（以使用者選擇的結束月份為終點）的單一指標月度率值序列
+// 回傳 [{ ym:'YYYY-MM', rate, n, denom }]，缺資料的月份 rate=null
+function monthlyRateSeries(filterFn, denomKeys, monthsBack, endDate) {
+  var out = [];
+  var anchor = endDate || (new Date());
+  var endY = anchor.getFullYear(), endM = anchor.getMonth();
+  for (var i = monthsBack - 1; i >= 0; i--) {
+    var y = endY, m = endM - i;
+    while (m < 0) { m += 12; y -= 1; }
+    var ym = y + '-' + String(m + 1).padStart(2, '0');
+    var mStart = new Date(y, m, 1);
+    var mEnd   = new Date(y, m + 1, 0);
+    // 件數（不套用 DRILLDOWN、不套用 filter checkbox，純依時間 + indicator filter，這樣才能看到「整體」趨勢）
+    var n = 0;
+    RAW.forEach(function (r) {
+      var d = parseDate(r[COL.date]); if (!d) return;
+      if (d < mStart || d > mEnd) return;
+      if (filterFn(r)) n++;
+    });
+    var denomTotal = null, missing = [];
+    denomKeys.forEach(function (k) {
+      var s = sumDenom(mStart, mEnd, k);
+      if (s && s.total != null) denomTotal = (denomTotal||0) + s.total;
+      if (s && s.missing && s.missing.length) missing = missing.concat(s.missing);
+    });
+    out.push({ ym: ym, rate: rateValue(n, denomTotal, 100), n: n, denom: denomTotal });
+  }
+  return out;
 }
 
 function diagnoseData() {
@@ -1021,6 +1113,7 @@ function refresh() {
   renderCultureKPIs(cur, lm, ly);
   renderPeriodCompare(cur, lm, ly, f);
   renderCategoryCompareChart(cur, lm, ly);
+  renderCategoryTrendChart(f);
   renderCategoryChart(cur);
   renderWillingness(cur);
   renderSacMatrix(cur, 'sac-matrix');
@@ -1142,42 +1235,47 @@ function renderRateKPIs(cur, lm, ly, f) {
 
   function countBy(rows, fn) { var n=0; rows.forEach(function(r){ if(fn(r)) n++; }); return n; }
 
-  // 定義所有率值指標
+  // 定義所有率值指標（單位 %：每 100 人日 / 每 100 張處方）
   var indicators = [
     {
-      label: '跌倒率（每千住院人日）',
+      label: '跌倒率（%，每百住院人日）',
       tooltip: '分母：一般病房住院人日 + 綜合科加護病房住院人日',
       filter: isFall,
       denomKeys: [DENOM_KEYS.wardDays, DENOM_KEYS.icuDays],
-      unit: '‰'
+      unit: '%',
+      color: '#dc2626'
     },
     {
-      label: '藥物事件率（每千張處方）',
+      label: '藥物事件率（%，每百張處方）',
       tooltip: '分母：門診 + 住院 + 急診處方簽數',
       filter: isMed,
       denomKeys: [DENOM_KEYS.outpatientRx, DENOM_KEYS.inpatientRx, DENOM_KEYS.erRx],
-      unit: '‰'
+      unit: '%',
+      color: '#7c3aed'
     },
     {
-      label: '中心靜脈導管自拔率（每千 CVP 日）',
+      label: '中心靜脈導管自拔率（%，每百 CVP 日）',
       tooltip: '分子：管路事件 ∩ 中心靜脈導管 ∩ 自拔；分母：中心靜脈導管使用日數',
       filter: function (r) { return tubeMatches(['中心靜脈'])(r) && isSelfPull(r); },
       denomKeys: [DENOM_KEYS.cvpDays],
-      unit: '‰'
+      unit: '%',
+      color: '#0891b2'
     },
     {
-      label: '導尿管事件率（每千導尿管日）',
+      label: '導尿管事件率（%，每百導尿管日）',
       tooltip: '分子：管路事件 ∩ 導尿管；分母：導尿管使用天數',
       filter: function (r) { return tubeMatches(['導尿管'])(r); },
       denomKeys: [DENOM_KEYS.foleyDays],
-      unit: '‰'
+      unit: '%',
+      color: '#f59e0b'
     },
     {
-      label: '氣管內管自拔率 UPP（每千插管日）',
+      label: '氣管內管自拔率 UPP（%，每百插管日）',
       tooltip: '分子：管路事件 ∩ 氣管內管 ∩ 自拔；分母：氣管內管使用天數',
       filter: function (r) { return tubeMatches(['氣管內管'])(r) && isSelfPull(r); },
       denomKeys: [DENOM_KEYS.ettDays],
-      unit: '‰'
+      unit: '%',
+      color: '#16a34a'
     }
   ];
 
@@ -1192,6 +1290,10 @@ function renderRateKPIs(cur, lm, ly, f) {
   }
 
   var anyMissing = false;
+  // 趨勢迷你圖以使用者選擇的「結束月份」為終點，往前看 12 個月
+  var trendMonths = 12;
+  var trendAnchor = f.end;
+
   var html = indicators.map(function (ind) {
     var nCur = countBy(cur, ind.filter);
     var nLm  = countBy(lm,  ind.filter);
@@ -1200,9 +1302,9 @@ function renderRateKPIs(cur, lm, ly, f) {
     var dLm  = denomSumOver(lmR.s,   lmR.e, ind.denomKeys);
     var dLy  = denomSumOver(lyR.s,   lyR.e, ind.denomKeys);
 
-    var rCur = ratePer1000(nCur, dCur.total);
-    var rLm  = ratePer1000(nLm,  dLm.total);
-    var rLy  = ratePer1000(nLy,  dLy.total);
+    var rCur = rateValue(nCur, dCur.total, 100);
+    var rLm  = rateValue(nLm,  dLm.total, 100);
+    var rLy  = rateValue(nLy,  dLy.total, 100);
 
     if (dCur.missing.length) anyMissing = true;
 
@@ -1224,12 +1326,26 @@ function renderRateKPIs(cur, lm, ly, f) {
       dLine = '<div class="bd-empty">⚠️ 此期分母資料缺漏（' + (dCur.missing.length ? dCur.missing.slice(0,3).join('、') + (dCur.missing.length>3?' ...':'') : '無') + '）</div>';
     }
 
+    // 趨勢迷你圖（近 12 個月率值）
+    var series = monthlyRateSeries(ind.filter, ind.denomKeys, trendMonths, trendAnchor);
+    var rates  = series.map(function (s) { return s.rate; });
+    var labels = series.map(function (s) { return s.ym; });
+    var spark = sparklineSvg(rates, { width: 220, height: 36, color: ind.color || '#0891b2', labels: labels, unit: ind.unit });
+
+    var trendRange = series.length ? (series[0].ym + ' ~ ' + series[series.length-1].ym) : '';
+
     return '<div class="card kpi" title="' + escapeHtml(ind.tooltip) + '">' +
       '<div class="label">' + escapeHtml(ind.label) + '</div>' +
       '<div class="value">' + fmtRate(rCur) + '</div>' +
       '<div class="deltas">' +
         '<div class="delta"><span class="k">vs 上月同期</span>' + rateBadge(rCur, rLm) + '</div>' +
         '<div class="delta"><span class="k">vs 去年同期</span>' + rateBadge(rCur, rLy) + '</div>' +
+      '</div>' +
+      '<div class="trend-box" style="margin-top:8px;padding-top:8px;border-top:1px dashed #e5e7eb;">' +
+        '<div style="font-size:10px;color:#9ca3af;display:flex;justify-content:space-between;align-items:center;">' +
+          '<span>近 12 月趨勢</span><span style="font-variant-numeric:tabular-nums;">' + escapeHtml(trendRange) + '</span>' +
+        '</div>' +
+        spark +
       '</div>' +
       '<div class="breakdown">' + dLine + '</div>' +
     '</div>';
@@ -1493,6 +1609,138 @@ function renderCategoryCompareChart(cur, lm, ly) {
           clamp: true,
           formatter: function (v) { return v ? v : ''; }
         }
+      }
+    }
+  });
+}
+
+// ====== 事件類別月趨勢（近 13 個月，含本月）======
+// X 軸：13 個月（以使用者選擇的結束月份為終點）
+// 每條線：一個事件類別（取「全資料」中 Top 8 ＋ 其他事件類別合計）
+// 點線或圖例觸發 DRILLDOWN（事件類別 = 該線）
+function renderCategoryTrendChart(f) {
+  if (!f || !f.end) return;
+  var months = 13;
+  var endY = f.end.getFullYear(), endM = f.end.getMonth();
+  var labels = [];
+  var monthStarts = [];
+  for (var i = months - 1; i >= 0; i--) {
+    var y = endY, m = endM - i;
+    while (m < 0) { m += 12; y -= 1; }
+    labels.push(y + '-' + String(m+1).padStart(2,'0'));
+    monthStarts.push({ y: y, m: m });
+  }
+  $('cat-trend-range').textContent = labels[0] + ' ~ ' + labels[labels.length-1];
+
+  // 套用「除事件類別以外」的鑽研條件（例如鎖定單位後看該單位的類別趨勢）
+  function passDrillExceptCategory(r) {
+    for (var dk in DRILLDOWN) {
+      if (dk === COL.category) continue;
+      if (!DRILLDOWN[dk]) continue;
+      if (normKey(r[dk]) !== DRILLDOWN[dk]) return false;
+    }
+    return true;
+  }
+
+  // 取趨勢範圍內 Top 8 類別（依累積件數）
+  var allCounts = {};
+  RAW.forEach(function (r) {
+    var d = parseDate(r[COL.date]); if (!d) return;
+    var inRange = monthStarts.some(function (ms) {
+      return d.getFullYear() === ms.y && d.getMonth() === ms.m;
+    });
+    if (!inRange) return;
+    if (!passDrillExceptCategory(r)) return;
+    var c = normKey(r[COL.category]);
+    allCounts[c] = (allCounts[c]||0) + 1;
+  });
+  var topCats = Object.keys(allCounts).sort(function (a, b) { return allCounts[b] - allCounts[a]; }).slice(0, 8);
+
+  // 為每個 Top 類別建立月份件數陣列
+  var seriesByCat = {};
+  topCats.forEach(function (c) { seriesByCat[c] = labels.map(function () { return 0; }); });
+  // 「其他」
+  var otherSeries = labels.map(function () { return 0; });
+  var hasOther = false;
+  RAW.forEach(function (r) {
+    var d = parseDate(r[COL.date]); if (!d) return;
+    var idx = monthStarts.findIndex(function (ms) {
+      return d.getFullYear() === ms.y && d.getMonth() === ms.m;
+    });
+    if (idx < 0) return;
+    if (!passDrillExceptCategory(r)) return;
+    var c = normKey(r[COL.category]);
+    if (seriesByCat[c]) seriesByCat[c][idx] += 1;
+    else { otherSeries[idx] += 1; hasOther = true; }
+  });
+
+  var datasets = topCats.map(function (c, i) {
+    return {
+      label: c,
+      data: seriesByCat[c],
+      borderColor: PALETTE[i % PALETTE.length],
+      backgroundColor: PALETTE[i % PALETTE.length],
+      tension: 0.25,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      borderWidth: 2,
+      fill: false
+    };
+  });
+  if (hasOther) {
+    datasets.push({
+      label: '其他',
+      data: otherSeries,
+      borderColor: '#9ca3af',
+      backgroundColor: '#9ca3af',
+      tension: 0.25,
+      pointRadius: 2,
+      borderDash: [4, 4],
+      borderWidth: 1.5,
+      fill: false
+    });
+  }
+
+  destroyChart('catTrend');
+  CHARTS.catTrend = new Chart($('chart-cat-trend'), {
+    type: 'line',
+    data: { labels: labels, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'nearest', intersect: false },
+      // 點圖例 → 切換鑽研；點數據點 → 鑽研該類別
+      onClick: function (evt, elements, chart) {
+        if (!elements || !elements.length) return;
+        var label = chart.data.datasets[elements[0].datasetIndex].label;
+        if (label && label !== '其他') toggleDrillDown(COL.category, label);
+      },
+      plugins: {
+        legend: {
+          position: 'top',
+          onClick: function (e, item, legend) {
+            var label = item.text;
+            if (label && label !== '其他') {
+              toggleDrillDown(COL.category, label);
+            } else {
+              // 「其他」保留原本的隱藏/顯示行為
+              var ci = legend.chart;
+              var idx = item.datasetIndex;
+              ci.setDatasetVisibility(idx, !ci.isDatasetVisible(idx));
+              ci.update();
+            }
+          }
+        },
+        tooltip: {
+          mode: 'index', intersect: false,
+          callbacks: {
+            footer: function () { return '提示：點圖例或數據點以鑽研該類別'; }
+          }
+        },
+        datalabels: { display: false }
+      },
+      scales: {
+        x: { ticks: { autoSkip: false, maxRotation: 0, font: { size: 10 } } },
+        y: { beginAtZero: true, ticks: { precision: 0 } }
       }
     }
   });
