@@ -197,6 +197,24 @@
   .ai-key-hint { font-size: 11px; color: #6b7280; }
   .ai-key-hint a { color: #2563eb; text-decoration: underline; }
 
+  /* ========== 明細表樣式 ========== */
+  table.detail-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.detail-table th { position: sticky; top: 0; background: #f3f4f6; color: #374151; font-weight: 700;
+    padding: 8px 10px; text-align: left; border-bottom: 2px solid #e5e7eb; z-index: 2; }
+  table.detail-table td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+  table.detail-table .detail-row:hover { background: #f9fafb; }
+  table.detail-table .detail-row td { line-height: 1.5; }
+  table.detail-table .expand-arrow { color: #2563eb; font-size: 10px; margin-right: 2px; }
+  table.detail-table td.num { font-variant-numeric: tabular-nums; color: #475569; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge-red     { background: #fef2f2; color: #b91c1c; }
+  .badge-orange  { background: #fff7ed; color: #c2410c; }
+  .badge-amber   { background: #fefce8; color: #a16207; }
+  .badge-cyan    { background: #ecfeff; color: #0e7490; }
+  .badge-green   { background: #f0fdf4; color: #15803d; }
+  .badge-neutral { background: #f3f4f6; color: #6b7280; }
+
   /* ========== 鑽研篩選（點擊圖表交叉篩選）========== */
   #drilldown-chips {
     background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
@@ -393,6 +411,25 @@
       <div id="tube-stats" style="margin-top: 10px; color: #374151; font-size: 14px;"></div>
     </div>
 
+    <div class="card chart-card c-full" id="fall-section" style="display:none;">
+      <h3>🩹 跌倒專區（高危險群識別 × 班別 × 年齡）<span id="fall-section-note" style="font-size:11px;color:#9ca3af;font-weight:400;margin-left:8px;"></span></h3>
+      <div id="fall-stats" style="margin-top: 6px;"></div>
+      <div id="fall-charts" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:12px;"></div>
+    </div>
+
+    <div class="card chart-card c-third">
+      <h3>年齡群組分布</h3>
+      <div class="chart-box"><canvas id="chart-age"></canvas></div>
+    </div>
+    <div class="card chart-card c-third">
+      <h3>性別分布</h3>
+      <div class="chart-box"><canvas id="chart-gender"></canvas></div>
+    </div>
+    <div class="card chart-card c-third">
+      <h3>發生班別分布</h3>
+      <div class="chart-box"><canvas id="chart-shift"></canvas></div>
+    </div>
+
     <div class="card chart-card c-half">
       <h3>通報者身分 × 事件類別</h3>
       <div class="chart-box tall"><canvas id="chart-reporter-cat"></canvas></div>
@@ -418,6 +455,18 @@
     <div class="card chart-card c-full">
       <h3>發生單位 Top 10</h3>
       <div class="chart-box tall"><canvas id="chart-unit"></canvas></div>
+    </div>
+
+    <div class="card chart-card c-full" id="detail-section">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+        <h3 style="margin:0;">📋 事件明細表 <span style="font-size:11px;color:#9ca3af;font-weight:400;">點任一列展開查看「完整發生情形」與「改善對策」</span></h3>
+        <div style="display:flex;gap:6px;font-size:12px;">
+          <span id="detail-count" style="color:#6b7280;align-self:center;"></span>
+          <button type="button" class="btn" style="padding:4px 10px;font-size:12px;" onclick="expandAllDetails(true)">全部展開</button>
+          <button type="button" class="btn" style="padding:4px 10px;font-size:12px;" onclick="expandAllDetails(false)">全部收合</button>
+        </div>
+      </div>
+      <div id="detail-table-wrap" style="max-height:600px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;"></div>
     </div>
   </div>
 </div>
@@ -559,8 +608,35 @@ var COL = {
   severity: '嚴重程度',
   freq: '發生頻率',
   reporter: '通報者身分',
-  willingness: '通報意願'
+  willingness: '通報意願',
+  // 2026/5 新增欄位
+  description: '發生情形',
+  improvement: '改善對策',
+  age: '年齡',
+  ageGroup: '年齡群組',         // 衍生欄位（資料載入時計算）
+  gender: '性別',
+  shift: '發生班別',
+  fallHighRisk: '事件發生前是否為跌倒高危險群',
+  cprStopReason: '停止CPR的原因'
 };
+
+// 年齡分組（醫療常用分級）
+function getAgeGroup(rawAge) {
+  var s = strongTrim(rawAge);
+  if (!s) return '(未填)';
+  // 處理「78歲」「78y」這類後綴
+  var m = s.match(/(\d+)/);
+  if (!m) return '(未填)';
+  var n = parseInt(m[1], 10);
+  if (isNaN(n) || n < 0 || n > 130) return '(未填)';
+  if (n < 18) return '0-17 歲';
+  if (n < 40) return '18-39 歲';
+  if (n < 60) return '40-59 歲';
+  if (n < 80) return '60-79 歲';
+  return '≥80 歲';
+}
+// 年齡分組排序順序
+var AGE_GROUP_ORDER = ['0-17 歲', '18-39 歲', '40-59 歲', '60-79 歲', '≥80 歲', '(未填)'];
 
 // 月報固定的維度（對齊 PDF）
 var SAC_FREQ_ORDER  = ['數週', '一年數次', '1~2年一次', '2~5年一次', '5年以上', '不知道'];
@@ -704,12 +780,12 @@ function reloadData() {
       var dn = res.denominators || { data: [] };
       if (ev && ev.error) { setStatus('載入失敗：' + ev.error, 'error'); return; }
       RAW = (ev && ev.data) || [];
-      // 套用單位正規化（歷史 ICU 名稱合併）
-      if (NORMALIZE_UNITS) {
-        RAW.forEach(function (r) {
-          if (r[COL.unit]) r[COL.unit] = normalizeUnit(r[COL.unit]);
-        });
-      }
+      // 套用單位正規化（歷史 ICU 名稱合併）+ 計算衍生欄位
+      RAW.forEach(function (r) {
+        if (NORMALIZE_UNITS && r[COL.unit]) r[COL.unit] = normalizeUnit(r[COL.unit]);
+        // 年齡群組
+        r[COL.ageGroup] = getAgeGroup(r[COL.age]);
+      });
       DENOM = (dn && dn.data) || [];
       buildDenomIndex();
       buildFilters();
@@ -1169,6 +1245,12 @@ function refresh() {
   renderBar('chart-sac', 'sac', sortedEntries(groupCount(cur, COL.sac)).sort(sacSort), '#7c3aed', false, COL.sac);
   renderBar('chart-severity', 'severity', sortedEntries(groupCount(cur, COL.severity)), '#f59e0b', false, COL.severity);
   renderBar('chart-unit', 'unit', sortedEntries(groupCount(cur, COL.unit), 10), '#0891b2', true, COL.unit);
+  // 人口/班別圖卡
+  renderDemographicCharts(cur);
+  // 跌倒專區
+  renderFallSection(cur);
+  // 事件明細表
+  renderDetailTable(cur);
   // 同步底部「即時實證對策」面板的焦點摘要
   if (typeof renderEvidenceContext === 'function') renderEvidenceContext();
 }
@@ -1980,6 +2062,340 @@ function renderParetoCause(cur) {
       }
     }]
   });
+}
+
+// ====== 人口/班別圖卡（年齡群組、性別、發生班別）======
+// 三張並排：年齡群組（doughnut，依固定順序）、性別（doughnut）、發生班別（bar）
+// 件數 + 佔比都顯示在 datalabels，並且全部支援點擊鑽研
+function renderDemographicChart(canvasId, key, drillCol, type, color, data) {
+  destroyChart(key);
+  var cv = $(canvasId);
+  if (!cv || !data || !data.length) {
+    // 沒資料就清空 canvas（避免顯示上次資料）
+    return;
+  }
+  var labels = data.map(function (x) { return x.k; });
+  var values = data.map(function (x) { return x.v; });
+  var total = values.reduce(function (a, b) { return a + b; }, 0);
+  var paletteColors = labels.map(function (_, i) { return PALETTE[i % PALETTE.length]; });
+  if (color && type === 'bar') paletteColors = labels.map(function () { return color; });
+
+  CHARTS[key] = new Chart(cv, {
+    type: type,
+    data: {
+      labels: labels,
+      datasets: [{
+        label: '件數',
+        data: values,
+        backgroundColor: paletteColors,
+        borderColor: type === 'doughnut' ? '#fff' : undefined,
+        borderWidth: type === 'doughnut' ? 2 : 0
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      onClick: drillCol ? makeChartClickHandler(drillCol) : undefined,
+      indexAxis: type === 'bar' ? 'y' : undefined,
+      layout: { padding: type === 'bar' ? { right: 24 } : undefined },
+      scales: type === 'bar' ? {
+        x: { beginAtZero: true, ticks: { precision: 0 } }
+      } : undefined,
+      plugins: {
+        legend: type === 'doughnut' ? { position: 'right', labels: { font: { size: 11 } } } : { display: false },
+        tooltip: {
+          callbacks: {
+            label: function (ctx) {
+              var v = ctx.parsed.y != null ? ctx.parsed.y : (ctx.parsed.x != null ? ctx.parsed.x : ctx.parsed);
+              var p = total > 0 ? Math.round(v/total*1000)/10 : 0;
+              return ctx.label + '：' + v + ' 件（' + p + '%）';
+            }
+          }
+        },
+        datalabels: {
+          color: type === 'doughnut' ? '#fff' : '#111827',
+          font: { size: 11, weight: 'bold' },
+          textStrokeColor: type === 'doughnut' ? 'rgba(0,0,0,0.6)' : null,
+          textStrokeWidth: type === 'doughnut' ? 2 : 0,
+          anchor: type === 'bar' ? 'end' : 'center',
+          align:  type === 'bar' ? 'end' : 'center',
+          formatter: function (v) {
+            if (!v) return '';
+            var p = total > 0 ? Math.round(v/total*100) : 0;
+            return v + (type === 'doughnut' && p >= 5 ? ' (' + p + '%)' : (type === 'bar' ? ' (' + p + '%)' : ''));
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderDemographicCharts(cur) {
+  // 年齡群組：以固定順序排
+  var ageMap = groupCount(cur, COL.ageGroup);
+  var ageArr = AGE_GROUP_ORDER.filter(function (k) { return ageMap[k]; }).map(function (k) { return { k: k, v: ageMap[k] }; });
+  Object.keys(ageMap).forEach(function (k) {
+    if (AGE_GROUP_ORDER.indexOf(k) === -1) ageArr.push({ k: k, v: ageMap[k] });
+  });
+  renderDemographicChart('chart-age', 'ageGroup', COL.ageGroup, 'doughnut', null, ageArr);
+
+  // 性別
+  var genderArr = sortedEntries(groupCount(cur, COL.gender));
+  renderDemographicChart('chart-gender', 'gender', COL.gender, 'doughnut', null, genderArr);
+
+  // 發生班別（醫療常用順序：白班 / 小夜 / 大夜 / 其他）
+  var shiftMap = groupCount(cur, COL.shift);
+  var SHIFT_ORDER = ['白班', '小夜', '大夜', 'D 白班', 'E 小夜', 'N 大夜'];
+  var shiftArr = [];
+  SHIFT_ORDER.forEach(function (k) { if (shiftMap[k]) shiftArr.push({ k: k, v: shiftMap[k] }); });
+  Object.keys(shiftMap).forEach(function (k) {
+    if (SHIFT_ORDER.indexOf(k) === -1) shiftArr.push({ k: k, v: shiftMap[k] });
+  });
+  renderDemographicChart('chart-shift', 'shift', COL.shift, 'bar', '#0891b2', shiftArr);
+}
+
+// ====== 跌倒專區 ======
+function renderFallSection(cur) {
+  var section = $('fall-section');
+  if (!section) return;
+  var fallRows = cur.filter(function (r) { return /跌倒/.test(String(r[COL.category]||'')); });
+  if (fallRows.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+
+  function isYes(v) {
+    var s = strongTrim(v);
+    if (!s) return false;
+    return !/^(否|無|n|no|0|false|未)$/i.test(s);
+  }
+
+  var highRisk    = fallRows.filter(function (r) { return isYes(r[COL.fallHighRisk]); });
+  var notHighRisk = fallRows.filter(function (r) {
+    var s = strongTrim(r[COL.fallHighRisk]);
+    return s && /^(否|無|n|no|0|false|未)$/i.test(s);
+  });
+  var unknownRisk = fallRows.length - highRisk.length - notHighRisk.length;
+
+  // 平均年齡
+  var ages = fallRows.map(function (r) {
+    var s = strongTrim(r[COL.age]);
+    var m = s.match(/(\d+)/);
+    return m ? parseInt(m[1], 10) : null;
+  }).filter(function (n) { return n != null && n >= 0 && n <= 130; });
+  var avgAge = ages.length ? Math.round(ages.reduce(function (a, b) { return a + b; }, 0) / ages.length) : null;
+
+  // 性別分布
+  var maleCount   = fallRows.filter(function (r) { return /男|M/i.test(String(r[COL.gender]||'')); }).length;
+  var femaleCount = fallRows.filter(function (r) { return /女|F/i.test(String(r[COL.gender]||'')); }).length;
+
+  // 高 SAC
+  var sacHigh = fallRows.filter(function (r) { return isHighSac(r[COL.sac]); }).length;
+
+  function pctStr(n, d) { return d > 0 ? (Math.round(n/d*1000)/10) + '%' : '—'; }
+
+  function statCell(label, val, sub, color, bg) {
+    return '<div style="flex:1 1 180px;min-width:180px;padding:12px 14px;background:' + (bg || '#fff') +
+      ';border:1px solid #e5e7eb;border-left:4px solid ' + (color || '#cbd5e1') +
+      ';border-radius:8px;transition:transform .15s, box-shadow .15s;" ' +
+      'onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,.08)\';" ' +
+      'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\';">' +
+      '<div style="font-size:11px;color:#6b7280;font-weight:700;letter-spacing:.5px;">' + label + '</div>' +
+      '<div style="font-size:22px;font-weight:700;color:' + (color || '#111827') + ';line-height:1.2;margin-top:4px;">' + val + '</div>' +
+      (sub ? '<div style="font-size:11px;color:#9ca3af;margin-top:4px;line-height:1.4;">' + sub + '</div>' : '') +
+    '</div>';
+  }
+
+  $('fall-stats').innerHTML =
+    '<div style="display:flex;flex-wrap:wrap;gap:10px;">' +
+      statCell('跌倒事件總數', fallRows.length + ' 件',
+               '本期跌倒事件總數', '#dc2626', 'linear-gradient(180deg,#fef2f2 0%,#fff 70%)') +
+      statCell('高危險群佔比', pctStr(highRisk.length, fallRows.length),
+               '事前已識別為高危險群仍跌倒 ' + highRisk.length + ' 件（值越高代表預防介入需加強）', '#b91c1c', 'linear-gradient(180deg,#fef2f2 0%,#fff 70%)') +
+      statCell('非高危險群佔比', pctStr(notHighRisk.length, fallRows.length),
+               '不在高危名單卻跌倒 ' + notHighRisk.length + ' 件（值越高代表高危評估準確度不足）', '#c2410c', 'linear-gradient(180deg,#fff7ed 0%,#fff 70%)') +
+      statCell('平均年齡', (avgAge != null ? avgAge + ' 歲' : '—'),
+               '依本期 ' + ages.length + ' 筆可解析年齡計算', '#0891b2', 'linear-gradient(180deg,#ecfeff 0%,#fff 70%)') +
+      statCell('男 / 女', maleCount + ' / ' + femaleCount,
+               '男 ' + pctStr(maleCount, maleCount+femaleCount) + ' · 女 ' + pctStr(femaleCount, maleCount+femaleCount), '#7c3aed', 'linear-gradient(180deg,#f5f3ff 0%,#fff 70%)') +
+      statCell('SAC ≥3 件數', sacHigh + ' 件',
+               '中度以上傷害', '#a16207', 'linear-gradient(180deg,#fefce8 0%,#fff 70%)') +
+    '</div>';
+
+  // 高危險群統計提示
+  var note = '';
+  if (unknownRisk > 0) note += '⚠️ ' + unknownRisk + ' 件未填高危險群欄位　';
+  $('fall-section-note').textContent = note;
+
+  // 小圖：班別 vs 件數、年齡群組 vs 件數
+  var fallChartsBox = $('fall-charts');
+  // 為避免反覆 destroy/create 出問題，先清掉舊圖
+  destroyChart('fallShift');
+  destroyChart('fallAge');
+  destroyChart('fallRisk');
+  fallChartsBox.innerHTML =
+    '<div><h4 style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;">高危險群識別狀況</h4><div style="height:200px;"><canvas id="chart-fall-risk"></canvas></div></div>' +
+    '<div><h4 style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;">發生班別</h4><div style="height:200px;"><canvas id="chart-fall-shift"></canvas></div></div>' +
+    '<div><h4 style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;">年齡群組</h4><div style="height:200px;"><canvas id="chart-fall-age"></canvas></div></div>';
+
+  // 高危險群識別圓餅
+  var riskLabels = [], riskValues = [];
+  if (highRisk.length)    { riskLabels.push('是（高危）');     riskValues.push(highRisk.length); }
+  if (notHighRisk.length) { riskLabels.push('否（非高危）');   riskValues.push(notHighRisk.length); }
+  if (unknownRisk > 0)    { riskLabels.push('未填'); riskValues.push(unknownRisk); }
+  CHARTS.fallRisk = new Chart($('chart-fall-risk'), {
+    type: 'doughnut',
+    data: { labels: riskLabels, datasets: [{ data: riskValues, backgroundColor: ['#dc2626', '#fbbf24', '#9ca3af'], borderWidth: 2, borderColor: '#fff' }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      onClick: makeChartClickHandler(COL.fallHighRisk),
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 11 } } },
+        datalabels: { color: '#fff', font: { weight: 'bold', size: 11 }, textStrokeColor: 'rgba(0,0,0,0.6)', textStrokeWidth: 2,
+          formatter: function (v) { var p = Math.round(v / fallRows.length * 100); return p >= 5 ? v + ' (' + p + '%)' : ''; } }
+      }
+    }
+  });
+
+  // 班別
+  var shiftMap = groupCount(fallRows, COL.shift);
+  var shiftArr = Object.keys(shiftMap).map(function(k){return {k:k, v:shiftMap[k]};}).sort(function(a,b){return b.v-a.v;});
+  CHARTS.fallShift = new Chart($('chart-fall-shift'), {
+    type: 'bar',
+    data: { labels: shiftArr.map(function(x){return x.k;}), datasets: [{ data: shiftArr.map(function(x){return x.v;}), backgroundColor: '#0891b2' }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      onClick: makeChartClickHandler(COL.shift),
+      layout: { padding: { right: 20 } },
+      scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+      plugins: { legend: { display: false }, datalabels: { color: '#111827', font: { weight: 'bold', size: 11 }, anchor: 'end', align: 'end', formatter: function (v) { return v ? v : ''; } } }
+    }
+  });
+
+  // 年齡群組
+  var ageMap = groupCount(fallRows, COL.ageGroup);
+  var ageArr = AGE_GROUP_ORDER.filter(function (k) { return ageMap[k]; }).map(function (k) { return { k: k, v: ageMap[k] }; });
+  CHARTS.fallAge = new Chart($('chart-fall-age'), {
+    type: 'bar',
+    data: { labels: ageArr.map(function(x){return x.k;}), datasets: [{ data: ageArr.map(function(x){return x.v;}), backgroundColor: '#f59e0b' }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      onClick: makeChartClickHandler(COL.ageGroup),
+      layout: { padding: { top: 16 } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+      plugins: { legend: { display: false }, datalabels: { color: '#111827', font: { weight: 'bold', size: 11 }, anchor: 'end', align: 'end', formatter: function (v) { return v ? v : ''; } } }
+    }
+  });
+}
+
+// ====== 事件明細表（可展開改善對策）======
+function renderDetailTable(cur) {
+  var wrap = $('detail-table-wrap');
+  var cntEl = $('detail-count');
+  if (!wrap) return;
+  if (cntEl) cntEl.textContent = '共 ' + cur.length + ' 筆';
+
+  if (!cur.length) {
+    wrap.innerHTML = '<div class="empty" style="padding:30px;">本期無資料</div>';
+    return;
+  }
+
+  // 排序：日期降冪（最新在前）
+  var rows = cur.slice().sort(function (a, b) {
+    var da = parseDate(a[COL.date]); var db = parseDate(b[COL.date]);
+    if (!da && !db) return 0;
+    if (!da) return 1; if (!db) return -1;
+    return db - da;
+  });
+
+  function truncate(s, n) {
+    s = String(s || '').replace(/\s+/g, ' ');
+    if (s.length <= n) return s;
+    return s.slice(0, n) + '⋯';
+  }
+  function sacBadge(v) {
+    var m = String(v||'').match(/\d+/);
+    if (!m) return '<span class="badge badge-neutral">' + escapeHtml(String(v||'—')) + '</span>';
+    var lv = parseInt(m[0], 10);
+    var cls = lv === 1 ? 'badge-red' : lv === 2 ? 'badge-orange' : lv === 3 ? 'badge-amber' : lv === 4 ? 'badge-cyan' : 'badge-green';
+    return '<span class="badge ' + cls + '">' + lv + '</span>';
+  }
+  function sevBadge(v) {
+    var s = String(v || '').trim();
+    if (!s) return '<span class="badge badge-neutral">—</span>';
+    var cls = 'badge-neutral';
+    if (/死亡|極重度|重度/.test(s)) cls = 'badge-red';
+    else if (/中度/.test(s)) cls = 'badge-orange';
+    else if (/輕度/.test(s)) cls = 'badge-amber';
+    else if (/無傷害/.test(s)) cls = 'badge-green';
+    else if (/跡近|near/i.test(s)) cls = 'badge-cyan';
+    return '<span class="badge ' + cls + '">' + escapeHtml(s) + '</span>';
+  }
+  function yesNoBadge(v) {
+    var s = String(v || '').trim();
+    if (!s) return '<span class="badge badge-neutral">—</span>';
+    var no = /^(否|無|n|no|0|false|未)$/i.test(s);
+    var cls = no ? 'badge-green' : 'badge-red';
+    return '<span class="badge ' + cls + '">' + escapeHtml(s) + '</span>';
+  }
+
+  var html = '<table class="detail-table"><thead><tr>' +
+    '<th style="width:90px;">日期</th>' +
+    '<th style="width:110px;">事件類別</th>' +
+    '<th style="width:90px;">班別</th>' +
+    '<th style="width:80px;">嚴重程度</th>' +
+    '<th style="width:80px;">SAC</th>' +
+    '<th style="width:110px;">發生原因</th>' +
+    '<th>發生情形（點列展開改善對策）</th>' +
+    '</tr></thead><tbody>';
+
+  rows.forEach(function (r, i) {
+    var desc = String(r[COL.description] || '').trim();
+    var imp  = String(r[COL.improvement] || '').trim();
+    var hasMore = desc.length > 60 || imp.length > 0;
+    html += '<tr class="detail-row" data-idx="' + i + '"' + (hasMore ? ' style="cursor:pointer;"' : '') + ' onclick="toggleDetailRow(' + i + ')">' +
+      '<td class="num">' + escapeHtml(String(r[COL.date]||'').slice(0,10)) + '</td>' +
+      '<td>' + escapeHtml(String(r[COL.category]||'—')) + '</td>' +
+      '<td>' + escapeHtml(String(r[COL.shift]||'—')) + '</td>' +
+      '<td>' + sevBadge(r[COL.severity]) + '</td>' +
+      '<td>' + sacBadge(r[COL.sac]) + '</td>' +
+      '<td>' + escapeHtml(String(r[COL.cause]||'—')) + '</td>' +
+      '<td>' + (hasMore ? '<span class="expand-arrow">▶</span> ' : '') + escapeHtml(truncate(desc || '—', 80)) + '</td>' +
+    '</tr>';
+    if (hasMore) {
+      html += '<tr class="detail-expanded" id="detail-expanded-' + i + '" style="display:none;"><td colspan="7" style="background:#f9fafb;padding:14px 18px;">' +
+        '<div style="display:grid;grid-template-columns:120px 1fr;gap:6px 12px;font-size:13px;line-height:1.6;">' +
+          '<div style="color:#6b7280;font-weight:700;">病人姓名</div><div>' + escapeHtml(String(r['病人姓名']||'—')) + '</div>' +
+          '<div style="color:#6b7280;font-weight:700;">發生單位</div><div>' + escapeHtml(String(r[COL.unit]||'—')) + '</div>' +
+          (r[COL.age] || r[COL.gender] ? '<div style="color:#6b7280;font-weight:700;">年齡 / 性別</div><div>' + escapeHtml(String(r[COL.age]||'—')) + ' 歲 / ' + escapeHtml(String(r[COL.gender]||'—')) + '</div>' : '') +
+          (r[COL.tube] ? '<div style="color:#6b7280;font-weight:700;">管路種類</div><div>' + escapeHtml(String(r[COL.tube]||'')) + '　約束：' + yesNoBadge(r[COL.restraint]) + '　重新插管：' + yesNoBadge(r[COL.reintub]) + '</div>' : '') +
+          (/跌倒/.test(String(r[COL.category]||'')) ? '<div style="color:#6b7280;font-weight:700;">跌倒高危險群</div><div>' + yesNoBadge(r[COL.fallHighRisk]) + '</div>' : '') +
+          '<div style="color:#0891b2;font-weight:700;">📝 完整發生情形</div><div style="white-space:pre-wrap;">' + escapeHtml(desc || '（未填寫）') + '</div>' +
+          '<div style="color:#16a34a;font-weight:700;">💡 改善對策</div><div style="white-space:pre-wrap;color:' + (imp ? '#14532d' : '#9ca3af') + ';">' + escapeHtml(imp || '（尚未填寫改善對策）') + '</div>' +
+        '</div>' +
+      '</td></tr>';
+    }
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function toggleDetailRow(idx) {
+  var exp = $('detail-expanded-' + idx);
+  if (!exp) return;
+  var visible = exp.style.display !== 'none';
+  exp.style.display = visible ? 'none' : '';
+  // 切換箭頭
+  var row = document.querySelector('.detail-row[data-idx="' + idx + '"]');
+  if (row) {
+    var arrow = row.querySelector('.expand-arrow');
+    if (arrow) arrow.textContent = visible ? '▶' : '▼';
+  }
+}
+
+function expandAllDetails(expand) {
+  document.querySelectorAll('.detail-expanded').forEach(function (el) { el.style.display = expand ? '' : 'none'; });
+  document.querySelectorAll('.detail-row .expand-arrow').forEach(function (el) { el.textContent = expand ? '▼' : '▶'; });
 }
 
 // ====== Heatmap helpers ======
