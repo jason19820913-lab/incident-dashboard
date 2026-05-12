@@ -381,6 +381,19 @@
       <div class="heat-wrap" id="pc-merged"></div>
     </div>
 
+    <div class="card chart-card c-third">
+      <h3>年齡群組分布</h3>
+      <div class="chart-box"><canvas id="chart-age"></canvas></div>
+    </div>
+    <div class="card chart-card c-third">
+      <h3>性別分布</h3>
+      <div class="chart-box"><canvas id="chart-gender"></canvas></div>
+    </div>
+    <div class="card chart-card c-third">
+      <h3>發生班別分布</h3>
+      <div class="chart-box"><canvas id="chart-shift"></canvas></div>
+    </div>
+
     <div class="card chart-card c-full">
       <h3>事件類別件數比較（本期 vs 上月同期 vs 去年同期）</h3>
       <div class="chart-box tall"><canvas id="chart-cat-compare"></canvas></div>
@@ -415,19 +428,6 @@
       <h3>🩹 跌倒專區（高危險群識別 × 班別 × 年齡）<span id="fall-section-note" style="font-size:11px;color:#9ca3af;font-weight:400;margin-left:8px;"></span></h3>
       <div id="fall-stats" style="margin-top: 6px;"></div>
       <div id="fall-charts" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:12px;"></div>
-    </div>
-
-    <div class="card chart-card c-third">
-      <h3>年齡群組分布</h3>
-      <div class="chart-box"><canvas id="chart-age"></canvas></div>
-    </div>
-    <div class="card chart-card c-third">
-      <h3>性別分布</h3>
-      <div class="chart-box"><canvas id="chart-gender"></canvas></div>
-    </div>
-    <div class="card chart-card c-third">
-      <h3>發生班別分布</h3>
-      <div class="chart-box"><canvas id="chart-shift"></canvas></div>
     </div>
 
     <div class="card chart-card c-half">
@@ -1559,6 +1559,18 @@ function renderCultureKPIs(cur, lm, ly) {
     '<div class="bd-item" style="font-size:10px;color:#9ca3af"><span class="bc">健康區間參考</span><span class="bv">≥ 30%</span></div></div>' +
   '</div>';
 
+  // 各通報者身分件數（依件數降冪）
+  var reporterMap = groupCount(cur, COL.reporter);
+  var reporterArr = Object.keys(reporterMap)
+    .map(function (k) { return { k: k, v: reporterMap[k] }; })
+    .sort(function (a, b) { return b.v - a.v; });
+  var reporterHtml = reporterArr.length
+    ? reporterArr.map(function (x) {
+        return '<div class="bd-item"><span class="bc" title="' + escapeHtml(x.k) + '">' +
+          escapeHtml(x.k) + '</span><span class="bv">' + x.v + '</span></div>';
+      }).join('')
+    : '<div class="bd-empty">無通報資料</div>';
+
   var diversityCard = '<div class="card kpi kpi-culture-diversity" title="本期出現過的「通報者身分」類別數。越多代表跨職類都在通報，文化越平衡。若長期只有護理人員通報，需檢視醫師與其他職類的通報意願。">' +
     '<div class="label">通報多樣性（職類數）</div>' +
     '<div class="value">' + curDiv + '</div>' +
@@ -1566,6 +1578,7 @@ function renderCultureKPIs(cur, lm, ly) {
       '<div class="delta"><span class="k">vs 上月同期</span>' + pctBadge(curDiv, lmDiv, true) + '</div>' +
       '<div class="delta"><span class="k">vs 去年同期</span>' + pctBadge(curDiv, lyDiv, true) + '</div>' +
     '</div>' +
+    '<div class="breakdown"><div class="bd-title">本期各職類通報件數</div>' + reporterHtml + '</div>' +
   '</div>';
 
   // 自主通報率（不含「第二或第三人把關」「病人或家屬告知」）
@@ -2142,7 +2155,7 @@ function renderDemographicCharts(cur) {
   var genderArr = sortedEntries(groupCount(cur, COL.gender));
   renderDemographicChart('chart-gender', 'gender', COL.gender, 'doughnut', null, genderArr);
 
-  // 發生班別（醫療常用順序：白班 / 小夜 / 大夜 / 其他）
+  // 發生班別（醫療常用順序：白班 / 小夜 / 大夜 / 其他）→ 改為甜甜圈
   var shiftMap = groupCount(cur, COL.shift);
   var SHIFT_ORDER = ['白班', '小夜', '大夜', 'D 白班', 'E 小夜', 'N 大夜'];
   var shiftArr = [];
@@ -2150,7 +2163,7 @@ function renderDemographicCharts(cur) {
   Object.keys(shiftMap).forEach(function (k) {
     if (SHIFT_ORDER.indexOf(k) === -1) shiftArr.push({ k: k, v: shiftMap[k] });
   });
-  renderDemographicChart('chart-shift', 'shift', COL.shift, 'bar', '#0891b2', shiftArr);
+  renderDemographicChart('chart-shift', 'shift', COL.shift, 'doughnut', null, shiftArr);
 }
 
 // ====== 跌倒專區 ======
