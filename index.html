@@ -425,9 +425,9 @@
     </div>
 
     <div class="card chart-card c-full" id="fall-section" style="display:none;">
-      <h3>🩹 跌倒專區（高危險群識別 × 班別 × 年齡）<span id="fall-section-note" style="font-size:11px;color:#9ca3af;font-weight:400;margin-left:8px;"></span></h3>
+      <h3>🩹 跌倒專區（高危險群識別 × 班別 × 年齡 × 主原因）<span id="fall-section-note" style="font-size:11px;color:#9ca3af;font-weight:400;margin-left:8px;"></span></h3>
       <div id="fall-stats" style="margin-top: 6px;"></div>
-      <div id="fall-charts" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:12px;"></div>
+      <div id="fall-charts" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:14px;"></div>
     </div>
 
     <div class="card chart-card c-half">
@@ -1750,7 +1750,7 @@ function renderCategoryCompareChart(cur, lm, ly) {
     options: {
       responsive: true, maintainAspectRatio: false,
       onClick: makeChartClickHandler(COL.category),
-      layout: { padding: { top: 20 } },
+      layout: { padding: { top: 28, right: 12, bottom: 4, left: 4 } },
       scales: {
         x: { ticks: { autoSkip: false, maxRotation: 45, minRotation: 30 } },
         y: { beginAtZero: true, ticks: { precision: 0 } }
@@ -1864,6 +1864,7 @@ function renderCategoryTrendChart(f) {
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'nearest', intersect: false },
+      layout: { padding: { top: 20, right: 24, bottom: 4, left: 4 } },
       // 點圖例 → 切換鑽研；點數據點 → 鑽研該類別
       onClick: function (evt, elements, chart) {
         if (!elements || !elements.length) return;
@@ -1940,6 +1941,7 @@ function renderWillingness(cur) {
     options: {
       responsive:true, maintainAspectRatio:false, indexAxis:'y',
       onClick: makeChartClickHandler(COL.willingness),
+      layout: { padding: { top: 6, right: 44, bottom: 4, left: 4 } },
       scales:{ x:{beginAtZero:true, ticks:{precision:0}} },
       plugins:{
         legend:{display:false},
@@ -1957,7 +1959,7 @@ function renderBar(canvasId, key, arr, color, horiz, drillCol) {
   destroyChart(key);
   var opt = {
     responsive:true, maintainAspectRatio:false, indexAxis: horiz?'y':'x',
-    layout: { padding: horiz ? { right: 24 } : { top: 20 } },
+    layout: { padding: horiz ? { top: 6, right: 44, bottom: 4, left: 4 } : { top: 28, right: 12, bottom: 4, left: 4 } },
     scales: { x:{beginAtZero:true, ticks:{precision:0}}, y:{beginAtZero:true, ticks:{precision:0}} },
     plugins: {
       legend:{display:false},
@@ -2019,7 +2021,7 @@ function renderParetoCause(cur) {
     options: {
       responsive: true, maintainAspectRatio: false,
       onClick: makeChartClickHandler(COL.cause),
-      layout: { padding: { top: 24, right: 12 } },
+      layout: { padding: { top: 30, right: 48, bottom: 4, left: 4 } },
       scales: {
         x: { ticks: { autoSkip: false, maxRotation: 30, minRotation: 0, font: { size: 11 } } },
         y:  { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: '件數' } },
@@ -2109,7 +2111,7 @@ function renderDemographicChart(canvasId, key, drillCol, type, color, data) {
       responsive: true, maintainAspectRatio: false,
       onClick: drillCol ? makeChartClickHandler(drillCol) : undefined,
       indexAxis: type === 'bar' ? 'y' : undefined,
-      layout: { padding: type === 'bar' ? { right: 24 } : undefined },
+      layout: { padding: type === 'bar' ? { top: 6, right: 50, bottom: 4, left: 4 } : { top: 8, right: 8, bottom: 8, left: 8 } },
       scales: type === 'bar' ? {
         x: { beginAtZero: true, ticks: { precision: 0 } }
       } : undefined,
@@ -2245,21 +2247,15 @@ function renderFallSection(cur) {
   destroyChart('fallAge');
   destroyChart('fallRisk');
   destroyChart('fallCause');
-  destroyChart('fallSubCause');
 
   var fallChartsBox = $('fall-charts');
   fallChartsBox.innerHTML =
-    // 第一列：人口與班別（3 張小圖）
-    '<div><h4 style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;">高危險群識別狀況</h4><div style="height:200px;"><canvas id="chart-fall-risk"></canvas></div></div>' +
-    '<div><h4 style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;">發生班別</h4><div style="height:200px;"><canvas id="chart-fall-shift"></canvas></div></div>' +
-    '<div><h4 style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;">年齡群組</h4><div style="height:200px;"><canvas id="chart-fall-age"></canvas></div></div>' +
-    // 第二列：原因分析（兩張大圖，跨整列）
-    '<div style="grid-column:1 / -1;display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;">' +
-      '<div><h4 style="margin:0 0 4px;font-size:12px;color:#dc2626;font-weight:700;">📍 跌倒發生主原因（柏拉圖，累積 80% 是優先處理目標）</h4>' +
-        '<div style="height:280px;"><canvas id="chart-fall-cause"></canvas></div></div>' +
-      '<div><h4 style="margin:0 0 4px;font-size:12px;color:#b45309;font-weight:700;">🔍 跌倒次要原因 / 促發因子</h4>' +
-        '<div style="height:280px;"><canvas id="chart-fall-subcause"></canvas></div></div>' +
-    '</div>';
+    // 四張並排：高危險群、班別、年齡、主原因柏拉圖
+    '<div><h4 style="margin:0 0 6px;font-size:12px;color:#6b7280;font-weight:600;">高危險群識別狀況</h4><div style="height:250px;"><canvas id="chart-fall-risk"></canvas></div></div>' +
+    '<div><h4 style="margin:0 0 6px;font-size:12px;color:#6b7280;font-weight:600;">發生班別</h4><div style="height:250px;"><canvas id="chart-fall-shift"></canvas></div></div>' +
+    '<div><h4 style="margin:0 0 6px;font-size:12px;color:#6b7280;font-weight:600;">年齡群組</h4><div style="height:250px;"><canvas id="chart-fall-age"></canvas></div></div>' +
+    '<div><h4 style="margin:0 0 6px;font-size:12px;color:#dc2626;font-weight:700;">📍 跌倒主原因柏拉圖</h4>' +
+      '<div style="height:250px;"><canvas id="chart-fall-cause"></canvas></div></div>';
 
   // 高危險群識別圓餅
   var riskLabels = [], riskValues = [];
@@ -2272,6 +2268,7 @@ function renderFallSection(cur) {
     options: {
       responsive: true, maintainAspectRatio: false,
       onClick: makeChartClickHandler(COL.fallHighRisk),
+      layout: { padding: { top: 8, right: 8, bottom: 8, left: 8 } },
       plugins: {
         legend: { position: 'bottom', labels: { font: { size: 11 } } },
         datalabels: { color: '#fff', font: { weight: 'bold', size: 11 }, textStrokeColor: 'rgba(0,0,0,0.6)', textStrokeWidth: 2,
@@ -2289,7 +2286,7 @@ function renderFallSection(cur) {
     options: {
       responsive: true, maintainAspectRatio: false, indexAxis: 'y',
       onClick: makeChartClickHandler(COL.shift),
-      layout: { padding: { right: 20 } },
+      layout: { padding: { top: 6, right: 44, bottom: 4, left: 4 } },
       scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
       plugins: { legend: { display: false }, datalabels: { color: '#111827', font: { weight: 'bold', size: 11 }, anchor: 'end', align: 'end', formatter: function (v) { return v ? v : ''; } } }
     }
@@ -2304,7 +2301,7 @@ function renderFallSection(cur) {
     options: {
       responsive: true, maintainAspectRatio: false,
       onClick: makeChartClickHandler(COL.ageGroup),
-      layout: { padding: { top: 16 } },
+      layout: { padding: { top: 28, right: 12, bottom: 4, left: 4 } },
       scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
       plugins: { legend: { display: false }, datalabels: { color: '#111827', font: { weight: 'bold', size: 11 }, anchor: 'end', align: 'end', formatter: function (v) { return v ? v : ''; } } }
     }
@@ -2332,9 +2329,9 @@ function renderFallSection(cur) {
       options: {
         responsive: true, maintainAspectRatio: false,
         onClick: makeChartClickHandler(COL.cause),
-        layout: { padding: { top: 20, right: 8 } },
+        layout: { padding: { top: 28, right: 44, bottom: 4, left: 4 } },
         scales: {
-          x: { ticks: { autoSkip: false, maxRotation: 30, minRotation: 0, font: { size: 10 } } },
+          x: { ticks: { autoSkip: false, maxRotation: 35, minRotation: 0, font: { size: 10 } } },
           y:  { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: '件數', font: { size: 10 } } },
           y1: { beginAtZero: true, max: 100, position: 'right',
                 ticks: { callback: function (v) { return v + '%'; }, font: { size: 10 } },
@@ -2385,49 +2382,6 @@ function renderFallSection(cur) {
     $('chart-fall-cause').parentElement.innerHTML = '<div style="color:#9ca3af;font-size:12px;padding:20px;">無主原因資料</div>';
   }
 
-  // ===== 跌倒次原因（橫條，含病人/環境因子）=====
-  var subArr = sortedEntries(groupCount(
-    fallRows.filter(function (r) {
-      var s = strongTrim(r[COL.subCause]);
-      return s && s !== '(未填)';
-    }),
-    COL.subCause
-  ), 8);
-
-  if (subArr.length) {
-    CHARTS.fallSubCause = new Chart($('chart-fall-subcause'), {
-      type: 'bar',
-      data: {
-        labels: subArr.map(function (x) { return x.k; }),
-        datasets: [{ label: '件數', data: subArr.map(function (x) { return x.v; }), backgroundColor: '#f59e0b' }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-        onClick: makeChartClickHandler(COL.subCause),
-        layout: { padding: { right: 24 } },
-        scales: {
-          x: { beginAtZero: true, ticks: { precision: 0 } },
-          y: { ticks: { font: { size: 10 } } }
-        },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: function (ctx) {
-                var totalSub = fallRows.length;
-                var pct = totalSub > 0 ? Math.round(ctx.parsed.x/totalSub*100) : 0;
-                return ctx.label + '：' + ctx.parsed.x + ' 件（佔本期跌倒 ' + pct + '%）';
-              }
-            }
-          },
-          datalabels: { anchor: 'end', align: 'end', color: '#111827',
-            font: { size: 10, weight: 'bold' }, formatter: function (v) { return v ? v : ''; } }
-        }
-      }
-    });
-  } else {
-    $('chart-fall-subcause').parentElement.innerHTML = '<div style="color:#9ca3af;font-size:12px;padding:20px;">本期跌倒事件「發生次原因」欄位皆未填寫</div>';
-  }
 }
 
 // ====== 事件明細表（可展開改善對策）======
