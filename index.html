@@ -427,7 +427,7 @@
     <div class="card chart-card c-full" id="fall-section" style="display:none;">
       <h3>🩹 跌倒專區（高危險群識別 × 班別 × 年齡 × 主原因）<span id="fall-section-note" style="font-size:11px;color:#9ca3af;font-weight:400;margin-left:8px;"></span></h3>
       <div id="fall-stats" style="margin-top: 6px;"></div>
-      <div id="fall-charts" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:14px;"></div>
+      <div id="fall-charts" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px;"></div>
     </div>
 
     <div class="card chart-card c-half">
@@ -2250,12 +2250,13 @@ function renderFallSection(cur) {
 
   var fallChartsBox = $('fall-charts');
   fallChartsBox.innerHTML =
-    // 四張並排：高危險群、班別、年齡、主原因柏拉圖
-    '<div><h4 style="margin:0 0 6px;font-size:12px;color:#6b7280;font-weight:600;">高危險群識別狀況</h4><div style="height:250px;"><canvas id="chart-fall-risk"></canvas></div></div>' +
-    '<div><h4 style="margin:0 0 6px;font-size:12px;color:#6b7280;font-weight:600;">發生班別</h4><div style="height:250px;"><canvas id="chart-fall-shift"></canvas></div></div>' +
-    '<div><h4 style="margin:0 0 6px;font-size:12px;color:#6b7280;font-weight:600;">年齡群組</h4><div style="height:250px;"><canvas id="chart-fall-age"></canvas></div></div>' +
-    '<div><h4 style="margin:0 0 6px;font-size:12px;color:#dc2626;font-weight:700;">📍 跌倒主原因柏拉圖</h4>' +
-      '<div style="height:250px;"><canvas id="chart-fall-cause"></canvas></div></div>';
+    // 第一列：3 張小圖（高危險群、班別、年齡）
+    '<div><h4 style="margin:0 0 6px;font-size:12px;color:#6b7280;font-weight:600;">高危險群識別狀況</h4><div style="height:240px;"><canvas id="chart-fall-risk"></canvas></div></div>' +
+    '<div><h4 style="margin:0 0 6px;font-size:12px;color:#6b7280;font-weight:600;">發生班別</h4><div style="height:240px;"><canvas id="chart-fall-shift"></canvas></div></div>' +
+    '<div><h4 style="margin:0 0 6px;font-size:12px;color:#6b7280;font-weight:600;">年齡群組</h4><div style="height:240px;"><canvas id="chart-fall-age"></canvas></div></div>' +
+    // 第二列：主原因柏拉圖，跨滿整行
+    '<div style="grid-column:1 / -1;"><h4 style="margin:8px 0 6px;font-size:13px;color:#dc2626;font-weight:700;">📍 跌倒主原因柏拉圖（累積 80% 是優先處理目標 · 點長條鑽研）</h4>' +
+      '<div style="height:320px;"><canvas id="chart-fall-cause"></canvas></div></div>';
 
   // 高危險群識別圓餅
   var riskLabels = [], riskValues = [];
