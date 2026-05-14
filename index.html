@@ -2240,16 +2240,26 @@ function renderFallSection(cur) {
   if (unknownRisk > 0) note += '⚠️ ' + unknownRisk + ' 件未填高危險群欄位　';
   $('fall-section-note').textContent = note;
 
-  // 小圖：班別 vs 件數、年齡群組 vs 件數
-  var fallChartsBox = $('fall-charts');
   // 為避免反覆 destroy/create 出問題，先清掉舊圖
   destroyChart('fallShift');
   destroyChart('fallAge');
   destroyChart('fallRisk');
+  destroyChart('fallCause');
+  destroyChart('fallSubCause');
+
+  var fallChartsBox = $('fall-charts');
   fallChartsBox.innerHTML =
+    // 第一列：人口與班別（3 張小圖）
     '<div><h4 style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;">高危險群識別狀況</h4><div style="height:200px;"><canvas id="chart-fall-risk"></canvas></div></div>' +
     '<div><h4 style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;">發生班別</h4><div style="height:200px;"><canvas id="chart-fall-shift"></canvas></div></div>' +
-    '<div><h4 style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;">年齡群組</h4><div style="height:200px;"><canvas id="chart-fall-age"></canvas></div></div>';
+    '<div><h4 style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;">年齡群組</h4><div style="height:200px;"><canvas id="chart-fall-age"></canvas></div></div>' +
+    // 第二列：原因分析（兩張大圖，跨整列）
+    '<div style="grid-column:1 / -1;display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;">' +
+      '<div><h4 style="margin:0 0 4px;font-size:12px;color:#dc2626;font-weight:700;">📍 跌倒發生主原因（柏拉圖，累積 80% 是優先處理目標）</h4>' +
+        '<div style="height:280px;"><canvas id="chart-fall-cause"></canvas></div></div>' +
+      '<div><h4 style="margin:0 0 4px;font-size:12px;color:#b45309;font-weight:700;">🔍 跌倒次要原因 / 促發因子</h4>' +
+        '<div style="height:280px;"><canvas id="chart-fall-subcause"></canvas></div></div>' +
+    '</div>';
 
   // 高危險群識別圓餅
   var riskLabels = [], riskValues = [];
@@ -2299,6 +2309,125 @@ function renderFallSection(cur) {
       plugins: { legend: { display: false }, datalabels: { color: '#111827', font: { weight: 'bold', size: 11 }, anchor: 'end', align: 'end', formatter: function (v) { return v ? v : ''; } } }
     }
   });
+
+  // ===== 跌倒主原因（柏拉圖：件數長條 + 累積百分比折線 + 80% 線）=====
+  var causeArr = sortedEntries(groupCount(fallRows, COL.cause), 8);
+  if (causeArr.length) {
+    var causeLabels = causeArr.map(function (x) { return x.k; });
+    var causeCounts = causeArr.map(function (x) { return x.v; });
+    var causeTotal  = causeCounts.reduce(function (a, b) { return a + b; }, 0);
+    var causeCum    = []; var run = 0;
+    causeCounts.forEach(function (v) { run += v; causeCum.push(causeTotal ? Math.round(run/causeTotal*1000)/10 : 0); });
+
+    CHARTS.fallCause = new Chart($('chart-fall-cause'), {
+      type: 'bar',
+      data: {
+        labels: causeLabels,
+        datasets: [
+          { type: 'bar',  label: '件數',     data: causeCounts, backgroundColor: '#dc2626', yAxisID: 'y',  order: 2 },
+          { type: 'line', label: '累積百分比', data: causeCum,    borderColor: '#1d4ed8', backgroundColor: '#1d4ed8',
+            tension: 0.2, pointRadius: 3, yAxisID: 'y1', order: 1 }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        onClick: makeChartClickHandler(COL.cause),
+        layout: { padding: { top: 20, right: 8 } },
+        scales: {
+          x: { ticks: { autoSkip: false, maxRotation: 30, minRotation: 0, font: { size: 10 } } },
+          y:  { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: '件數', font: { size: 10 } } },
+          y1: { beginAtZero: true, max: 100, position: 'right',
+                ticks: { callback: function (v) { return v + '%'; }, font: { size: 10 } },
+                grid: { drawOnChartArea: false },
+                title: { display: true, text: '累積 %', font: { size: 10 } } }
+        },
+        plugins: {
+          legend: { position: 'top', labels: { font: { size: 10 } } },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                if (ctx.dataset.type === 'line') return '累積：' + ctx.parsed.y + '%';
+                var pct = causeTotal > 0 ? Math.round(ctx.parsed.y/causeTotal*100) : 0;
+                return '件數：' + ctx.parsed.y + '（佔 ' + pct + '%）';
+              }
+            }
+          },
+          datalabels: {
+            color: function (ctx) { return ctx.dataset.type === 'line' ? '#1d4ed8' : '#111827'; },
+            anchor: 'end', align: 'end',
+            font: { size: 10, weight: 'bold' },
+            formatter: function (v, ctx) {
+              if (ctx.dataset.type === 'line') return v + '%';
+              return v ? v : '';
+            }
+          }
+        }
+      },
+      plugins: [{
+        id: 'fallPareto80line',
+        afterDraw: function (chart) {
+          var y1 = chart.scales.y1; if (!y1) return;
+          var yPx = y1.getPixelForValue(80);
+          var ctx = chart.ctx;
+          ctx.save();
+          ctx.strokeStyle = '#f59e0b'; ctx.setLineDash([4,4]); ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(chart.chartArea.left, yPx);
+          ctx.lineTo(chart.chartArea.right, yPx);
+          ctx.stroke();
+          ctx.fillStyle = '#b45309'; ctx.font = '10px sans-serif';
+          ctx.fillText('80%', chart.chartArea.right - 26, yPx - 3);
+          ctx.restore();
+        }
+      }]
+    });
+  } else {
+    $('chart-fall-cause').parentElement.innerHTML = '<div style="color:#9ca3af;font-size:12px;padding:20px;">無主原因資料</div>';
+  }
+
+  // ===== 跌倒次原因（橫條，含病人/環境因子）=====
+  var subArr = sortedEntries(groupCount(
+    fallRows.filter(function (r) {
+      var s = strongTrim(r[COL.subCause]);
+      return s && s !== '(未填)';
+    }),
+    COL.subCause
+  ), 8);
+
+  if (subArr.length) {
+    CHARTS.fallSubCause = new Chart($('chart-fall-subcause'), {
+      type: 'bar',
+      data: {
+        labels: subArr.map(function (x) { return x.k; }),
+        datasets: [{ label: '件數', data: subArr.map(function (x) { return x.v; }), backgroundColor: '#f59e0b' }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        onClick: makeChartClickHandler(COL.subCause),
+        layout: { padding: { right: 24 } },
+        scales: {
+          x: { beginAtZero: true, ticks: { precision: 0 } },
+          y: { ticks: { font: { size: 10 } } }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                var totalSub = fallRows.length;
+                var pct = totalSub > 0 ? Math.round(ctx.parsed.x/totalSub*100) : 0;
+                return ctx.label + '：' + ctx.parsed.x + ' 件（佔本期跌倒 ' + pct + '%）';
+              }
+            }
+          },
+          datalabels: { anchor: 'end', align: 'end', color: '#111827',
+            font: { size: 10, weight: 'bold' }, formatter: function (v) { return v ? v : ''; } }
+        }
+      }
+    });
+  } else {
+    $('chart-fall-subcause').parentElement.innerHTML = '<div style="color:#9ca3af;font-size:12px;padding:20px;">本期跌倒事件「發生次原因」欄位皆未填寫</div>';
+  }
 }
 
 // ====== 事件明細表（可展開改善對策）======
